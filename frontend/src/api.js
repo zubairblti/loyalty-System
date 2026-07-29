@@ -8,6 +8,10 @@ export const api = axios.create({
 })
 
 export async function login(email, password) {
-  await axios.get('/sanctum/csrf-cookie', { withCredentials: true })
+  await prepareCsrf()
   return (await api.post('/login', { email, password })).data
+}
+
+export async function prepareCsrf() {
+  await axios.get('/sanctum/csrf-cookie', { withCredentials: true })
 }

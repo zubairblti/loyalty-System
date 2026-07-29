@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuthenticateCustomer;
 use App\Http\Middleware\VerifyIntegrationSignature;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
         $middleware->alias([
             'integration.signature' => VerifyIntegrationSignature::class,
+            'customer.auth' => AuthenticateCustomer::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

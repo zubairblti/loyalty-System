@@ -4,7 +4,7 @@ import {
   BarChart3, Globe2, LayoutDashboard, LogOut, MonitorSmartphone,
   Plus, QrCode, ReceiptText, Search, Settings2, Users,
 } from 'lucide-react'
-import { api, login } from './api'
+import { api, login, prepareCsrf } from './api'
 import { connectRealtime } from './realtime'
 import './styles.css'
 
@@ -52,6 +52,81 @@ function ClaimPage({ token }) {
           <button className="primary">Claim points</button>
         </form>
       </>}
+    </section>
+  </main>
+}
+
+function CustomerPortal({ slug }) {
+  const [business, setBusiness] = useState(null)
+  const [dashboard, setDashboard] = useState(null)
+  const [step, setStep] = useState('phone')
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [demoCode, setDemoCode] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get(`/customer/${slug}/business`).then(r => setBusiness(r.data)).catch(() => setError('Business portal not found.'))
+    api.get(`/customer/${slug}/dashboard`).then(r => setDashboard(r.data)).catch(() => {})
+  }, [slug])
+
+  const requestCode = async e => {
+    e.preventDefault(); setError('')
+    try {
+      await prepareCsrf()
+      const { data } = await api.post(`/customer/${slug}/otp`, { phone })
+      setDemoCode(data.demo_code || ''); setStep('code')
+    } catch (err) { setError(err.response?.data?.message || 'Could not send code.') }
+  }
+  const verify = async e => {
+    e.preventDefault(); setError('')
+    try {
+      const { data } = await api.post(`/customer/${slug}/verify`, { phone, code })
+      setDashboard(data)
+    } catch (err) { setError(err.response?.data?.message || 'Invalid code.') }
+  }
+  const logout = async () => { await api.post(`/customer/${slug}/logout`); setDashboard(null); setStep('phone'); setCode('') }
+
+  if (!business && !error) return <div className="loading full">Loading rewards...</div>
+  if (!dashboard) return <main className="customer-login">
+    <section className="customer-login-panel">
+      <div className="customer-brand"><span className="brand-mark">L</span><div><small>REWARDS BY LOYALTYOS</small><h1>{business?.name || 'Rewards'}</h1></div></div>
+      <div className="login-copy"><h2>Your rewards, in one place</h2><p>Check your points and recent purchases using your phone number.</p></div>
+      {step === 'phone' ? <form onSubmit={requestCode} className="claim-form">
+        <label>Mobile number<input value={phone} onChange={e => setPhone(e.target.value)} required placeholder="+92 300 1234567"/></label>
+        {error && <div className="error">{error}</div>}
+        <button className="customer-primary">Send secure code</button>
+      </form> : <form onSubmit={verify} className="claim-form">
+        <label>6-digit code<input value={code} onChange={e => setCode(e.target.value)} required inputMode="numeric" maxLength="6" placeholder="000000"/></label>
+        {demoCode && <div className="demo-code">Development code: <strong>{demoCode}</strong></div>}
+        {error && <div className="error">{error}</div>}
+        <button className="customer-primary">Open my rewards</button>
+        <button type="button" className="text-button" onClick={() => setStep('phone')}>Use another number</button>
+      </form>}
+      <p className="privacy-note">Your number is only used to identify your rewards account.</p>
+    </section>
+  </main>
+
+  const progress = dashboard.next_tier_at ? Math.min(100, (dashboard.balance / dashboard.next_tier_at) * 100) : 100
+  return <main className="customer-portal">
+    <header className="customer-header"><div className="customer-brand"><span className="brand-mark small">L</span><strong>{dashboard.business.name}</strong></div><button className="text-button" onClick={logout}>Sign out</button></header>
+    <section className="customer-content">
+      <div className="customer-welcome"><div><p>Welcome back</p><h1>{dashboard.customer.name || dashboard.customer.phone}</h1></div><span className="tier-badge">{dashboard.tier}</span></div>
+      <section className="wallet">
+        <small>AVAILABLE POINTS</small><strong>{dashboard.balance.toLocaleString()}</strong><p>Use your points on your next eligible purchase.</p>
+        <div className="tier-progress"><div><span>{dashboard.tier}</span><span>{dashboard.next_tier || 'Top tier'}</span></div><progress value={progress} max="100"/>
+          <small>{dashboard.next_tier ? `${Math.max(0, dashboard.next_tier_at - dashboard.balance)} points to ${dashboard.next_tier}` : 'You reached the highest tier'}</small></div>
+      </section>
+      <div className="customer-grid">
+        <section className="customer-section"><div className="customer-section-head"><h2>Points activity</h2><span>{dashboard.transactions.length} entries</span></div>
+          <div className="activity-list">{dashboard.transactions.map(tx => <div className="activity-row" key={tx.id}><div className={tx.points >= 0 ? 'activity-icon earn' : 'activity-icon spend'}>{tx.points >= 0 ? '+' : '−'}</div><div><strong>{tx.description || tx.type}</strong><small>{new Date(tx.created_at).toLocaleDateString()}</small></div><b className={tx.points >= 0 ? 'positive' : 'negative'}>{tx.points >= 0 ? '+' : ''}{tx.points}</b></div>)}
+            {!dashboard.transactions.length && <div className="customer-empty">Your points activity will appear here.</div>}</div>
+        </section>
+        <section className="customer-section"><div className="customer-section-head"><h2>Recent purchases</h2><span>{dashboard.orders.length} orders</span></div>
+          <div className="activity-list">{dashboard.orders.map(order => <div className="activity-row" key={order.id}><div className="activity-icon order"><ReceiptText size={17}/></div><div><strong>{order.external_id}</strong><small>{new Date(order.created_at).toLocaleDateString()} · {order.payment_method || order.source}</small></div><b>{money(order.total)}</b></div>)}
+            {!dashboard.orders.length && <div className="customer-empty">No linked purchases yet.</div>}</div>
+        </section>
+      </div>
     </section>
   </main>
 }
@@ -162,9 +237,11 @@ function Empty({ title }) { return <section className="panel empty-state"><h2>{t
 
 export default function App() {
   const claimToken = window.location.pathname.match(/^\/claim\/([^/]+)$/)?.[1]
+  const customerSlug = window.location.pathname.match(/^\/customer\/([^/]+)\/?$/)?.[1]
   const [user, setUser] = useState(undefined)
   useEffect(() => { api.get('/me').then(r => setUser(r.data)).catch(() => setUser(null)) }, [])
   if (claimToken) return <ClaimPage token={claimToken}/>
+  if (customerSlug) return <CustomerPortal slug={customerSlug}/>
   if (user === undefined) return <div className="loading full">Loading...</div>
   if (!user) return <Login onLogin={setUser} />
   const logout = async () => { await api.post('/logout'); setUser(null) }

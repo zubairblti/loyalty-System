@@ -70,6 +70,51 @@ code { font-size: 11px; overflow-wrap: anywhere; color: #446057; }
 .claim-form { display: grid; gap: 17px; }
 .loading { padding: 40px; color: #65716b; }
 .loading.full { min-height: 100vh; display: grid; place-items: center; }
+.customer-login { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #e9f0ec; }
+.customer-login-panel { width: min(430px, 100%); background: white; border: 1px solid #dbe3df; border-radius: 8px; padding: 30px; box-shadow: 0 18px 55px rgba(24, 54, 43, .1); }
+.customer-brand { display: flex; align-items: center; gap: 12px; }
+.customer-brand small { color: #78827d; font-size: 9px; font-weight: 800; }
+.customer-brand h1 { font-size: 17px; margin: 3px 0 0; }
+.login-copy { margin: 48px 0 24px; }
+.login-copy h2 { font-size: 27px; margin: 0 0 9px; }
+.login-copy p, .privacy-note { color: #6a756f; font-size: 13px; line-height: 1.55; }
+.customer-primary { height: 44px; border: 0; border-radius: 6px; background: #176b4b; color: white; font-weight: 700; }
+.text-button { border: 0; background: none; color: #276650; font-weight: 650; padding: 8px; }
+.demo-code { background: #fff6dc; border: 1px solid #ead69b; padding: 10px 12px; border-radius: 5px; color: #725719; font-size: 12px; }
+.privacy-note { margin: 24px 0 0; text-align: center; font-size: 11px; }
+.customer-portal { min-height: 100vh; background: #f3f6f4; }
+.customer-header { max-width: 1080px; height: 74px; margin: auto; padding: 0 22px; }
+.customer-content { width: min(1036px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 60px; }
+.customer-welcome { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+.customer-welcome p { margin: 0 0 4px; color: #6c7671; font-size: 13px; }
+.customer-welcome h1 { margin: 0; font-size: 25px; }
+.tier-badge { background: #f2c65d; color: #3c3218; padding: 7px 11px; border-radius: 999px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.wallet { background: #173d30; color: white; border-radius: 8px; padding: 26px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; }
+.wallet > small { color: #a9c4b9; font-size: 10px; font-weight: 800; }
+.wallet > strong { grid-column: 1; font-size: 48px; line-height: 1.1; margin-top: 9px; }
+.wallet > p { grid-column: 1; color: #b8cec5; font-size: 12px; margin: 8px 0 0; }
+.tier-progress { grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; justify-content: center; gap: 9px; }
+.tier-progress div { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; }
+.tier-progress progress { appearance: none; width: 100%; height: 8px; }
+.tier-progress progress::-webkit-progress-bar { background: #31584a; border-radius: 8px; }
+.tier-progress progress::-webkit-progress-value { background: #f0be4e; border-radius: 8px; }
+.tier-progress > small { color: #abc4ba; font-size: 10px; }
+.customer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+.customer-section { background: white; border: 1px solid #e0e6e3; border-radius: 7px; overflow: hidden; }
+.customer-section-head { padding: 17px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ebefed; }
+.customer-section-head h2 { font-size: 15px; margin: 0; }
+.customer-section-head span { color: #7a847f; font-size: 10px; }
+.activity-row { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 11px; padding: 13px 18px; border-bottom: 1px solid #edf0ee; }
+.activity-row:last-child { border: 0; }
+.activity-row strong, .activity-row small { display: block; font-size: 12px; }
+.activity-row small { color: #7a847f; margin-top: 3px; text-transform: capitalize; }
+.activity-row b { font-size: 12px; }
+.positive { color: #17714e; } .negative { color: #a44747; }
+.activity-icon { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; }
+.activity-icon.earn { color: #176b4b; background: #e6f4ed; }
+.activity-icon.spend { color: #a44747; background: #faeaea; }
+.activity-icon.order { color: #795c18; background: #fbf1d6; }
+.customer-empty { padding: 38px 18px; text-align: center; color: #7a847f; font-size: 12px; }
 @media (max-width: 850px) {
   .app-shell { grid-template-columns: 68px 1fr; }
   aside { padding: 18px 8px; } .brand strong, nav button:not(.active)::after, nav button { font-size: 0; }
@@ -82,4 +127,8 @@ code { font-size: 11px; overflow-wrap: anywhere; color: #446057; }
   header { height: 76px; } .workspace { padding: 0 10px 24px; }
   .panel { overflow-x: auto; } table { min-width: 620px; }
   .inline-form { grid-template-columns: 1fr; } .qr-created { align-items: flex-start; flex-direction: column; }
+  .customer-login-panel { padding: 24px; } .login-copy { margin-top: 38px; }
+  .customer-grid { grid-template-columns: 1fr; }
+  .wallet { grid-template-columns: 1fr; }
+  .tier-progress { grid-column: 1; grid-row: auto; margin-top: 24px; }
 }
