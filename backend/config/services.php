@@ -22,6 +22,23 @@ return [
         'key' => env('RESEND_API_KEY'),
     ],
 
+    'safepay' => [
+        'public_key' => env('SAFEPAY_PUBLIC_KEY'),
+        'secret_key' => env('SAFEPAY_SECRET_KEY'),
+        'environment' => env('SAFEPAY_ENVIRONMENT', 'sandbox'),
+        'webhook_secret' => env('SAFEPAY_WEBHOOK_SECRET'),
+    ],
+
+    'sms' => [
+        'driver' => env('SMS_DRIVER', 'log'),
+        'twilio' => [
+            'account_sid' => env('TWILIO_ACCOUNT_SID'),
+            'auth_token' => env('TWILIO_AUTH_TOKEN'),
+            'from' => env('TWILIO_FROM_NUMBER'),
+            'messaging_service_sid' => env('TWILIO_MESSAGING_SERVICE_SID'),
+        ],
+    ],
+
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),

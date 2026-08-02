@@ -22,4 +22,19 @@ class Business extends Model
     {
         return $this->hasMany(Order::class);
     }
+
+    public function subscriptions()
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(PaymentSubmission::class);
+    }
+
+    public function activeSubscription()
+    {
+        return $this->hasOne(Subscription::class)->where('status', 'active')->where('ends_at', '>', now())->latestOfMany();
+    }
 }

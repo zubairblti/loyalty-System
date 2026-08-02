@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\AuthenticateCustomer;
+use App\Http\Middleware\RequireActiveSubscription;
+use App\Http\Middleware\RequireSuperAdmin;
 use App\Http\Middleware\VerifyIntegrationSignature;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,6 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'integration.signature' => VerifyIntegrationSignature::class,
             'customer.auth' => AuthenticateCustomer::class,
+            'super.admin' => RequireSuperAdmin::class,
+            'subscription.active' => RequireActiveSubscription::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

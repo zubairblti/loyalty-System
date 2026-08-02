@@ -8,6 +8,13 @@ class Customer extends Model
 {
     protected $guarded = [];
 
+    protected $hidden = ['password'];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+
     public function ledger()
     {
         return $this->hasMany(PointsLedger::class);
