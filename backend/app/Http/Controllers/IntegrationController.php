@@ -54,7 +54,7 @@ class IntegrationController extends Controller
             ['customer_id' => $customer->id, 'total' => $data['total'], 'currency' => $data['currency'] ?? 'PKR', 'status' => $data['status'], 'paid_at' => $data['status'] === 'paid' ? now() : null],
         );
         if ($order->status === 'paid') {
-            ProcessPaidOrder::dispatch($order->id);
+            ProcessPaidOrder::dispatch($order->id, $integration->business_id);
         }
 
         return response()->json(['accepted' => true, 'order_id' => $order->id], 202);

@@ -90,8 +90,9 @@ class AdminController extends Controller
         return $plan;
     }
 
-    public function reviewPayment(Request $request, PaymentSubmission $payment)
+    public function reviewPayment(Request $request, int $payment)
     {
+        $payment = PaymentSubmission::findOrFail($payment);
         $data = $request->validate(['status' => ['required', 'in:approved,rejected'], 'admin_note' => ['nullable', 'string', 'max:500']]);
         abort_unless($payment->status === 'pending', 422, 'Payment has already been reviewed.');
 
@@ -131,11 +132,12 @@ class AdminController extends Controller
         ]);
         $request->merge(['status' => 'approved', 'admin_note' => 'Cash payment recorded by Super Admin.']);
 
-        return $this->reviewPayment($request, $payment);
+        return $this->reviewPayment($request, $payment->id);
     }
 
-    public function paymentReceipt(PaymentSubmission $payment)
+    public function paymentReceipt(int $payment)
     {
+        $payment = PaymentSubmission::findOrFail($payment);
         abort_unless($payment->receipt_path && Storage::disk('local')->exists($payment->receipt_path), 404);
 
         return response()->file(Storage::disk('local')->path($payment->receipt_path));

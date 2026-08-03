@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Contracts\SmsSender;
+use App\Mail\VerificationCodeMail;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerOtp;
 use App\Models\VerificationCode;
-use App\Mail\VerificationCodeMail;
 use App\Services\LoyaltyService;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;

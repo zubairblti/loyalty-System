@@ -21,8 +21,8 @@ Route::middleware('web')->group(function () {
 });
 Route::post('/integrations/orders', [IntegrationController::class, 'ingest'])->middleware('integration.signature');
 Route::post('/webhooks/safepay', SafepayWebhookController::class);
-Route::post('/qr/{token}/claim', [QrCodeController::class, 'claim'])->middleware('throttle:20,1');
-Route::prefix('/customer/{slug}')->middleware('web')->group(function () {
+Route::post('/qr/{token}/claim', [QrCodeController::class, 'claim'])->middleware(['tenant.qr', 'throttle:20,1']);
+Route::prefix('/customer/{slug}')->middleware(['web', 'tenant.customer'])->group(function () {
     Route::get('/business', [CustomerPortalController::class, 'business']);
     Route::post('/register', [CustomerPortalController::class, 'register']);
     Route::post('/register/resend', [CustomerPortalController::class, 'resendRegistration']);
@@ -35,7 +35,7 @@ Route::prefix('/customer/{slug}')->middleware('web')->group(function () {
     Route::post('/profile/phone/verify', [CustomerPortalController::class, 'verifyPhoneChange'])->middleware('customer.auth');
 });
 
-Route::middleware(['web', 'auth:sanctum'])->group(function () {
+Route::middleware(['web', 'auth:sanctum', 'tenant.auth'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/subscription', [SubscriptionController::class, 'status']);
@@ -55,7 +55,7 @@ Route::middleware(['web', 'auth:sanctum'])->group(function () {
     });
 });
 
-Route::prefix('/admin')->middleware(['web', 'auth:sanctum', 'super.admin'])->group(function () {
+Route::prefix('/admin')->middleware(['web', 'auth:sanctum', 'tenant.auth', 'super.admin'])->group(function () {
     Route::get('/dashboard', [AdminController::class, 'dashboard']);
     Route::patch('/businesses/{business}', [AdminController::class, 'updateBusiness']);
     Route::put('/plan', [AdminController::class, 'savePlan']);

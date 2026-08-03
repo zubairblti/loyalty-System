@@ -48,6 +48,7 @@ class SafepayWebhookTest extends TestCase
         config(['services.safepay.webhook_secret' => 'test-webhook-secret']);
         $plan = Plan::create(['name' => 'Business', 'monthly_price' => 5000]);
         $business = Business::create(['name' => 'Store', 'slug' => 'store', 'plan_id' => null]);
+        $this->useTenant($business->id);
         PaymentSubmission::create([
             'business_id' => $business->id,
             'plan_id' => $plan->id,

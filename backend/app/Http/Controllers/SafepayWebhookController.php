@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\SafepayWebhookEvent;
 use App\Models\PaymentSubmission;
+use App\Models\SafepayWebhookEvent;
 use App\Services\ActivateSafepaySubscription;
+use App\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 
 class SafepayWebhookController extends Controller
 {
-    public function __invoke(Request $request, ActivateSafepaySubscription $activate)
+    public function __invoke(Request $request, ActivateSafepaySubscription $activate, TenantContext $tenancy)
     {
         $secret = config('services.safepay.webhook_secret');
         abort_unless(filled($secret), 503, 'Safepay webhook secret is not configured.');
@@ -36,10 +37,16 @@ class SafepayWebhookController extends Controller
         );
 
         if ($event->wasRecentlyCreated && $payload['type'] === 'payment.succeeded' && is_string($tracker)) {
-            $payment = PaymentSubmission::where('safepay_tracker', $tracker)->first();
+            $payment = $tenancy->runAsSystem(fn () => PaymentSubmission::withoutGlobalScope('tenant')
+                ->where('safepay_tracker', $tracker)->first());
             if ($payment) {
-                $activate->handle($payment, $payload);
-                $event->update(['processed_at' => now()]);
+                $tenancy->activate($payment->business_id);
+                try {
+                    $activate->handle($payment, $payload);
+                    $event->update(['processed_at' => now()]);
+                } finally {
+                    $tenancy->clear();
+                }
             }
         }
 

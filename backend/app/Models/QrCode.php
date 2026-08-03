@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 
 class QrCode extends Model
 {
+    use BelongsToTenant;
+
     public $incrementing = false;
 
     protected $keyType = 'string';

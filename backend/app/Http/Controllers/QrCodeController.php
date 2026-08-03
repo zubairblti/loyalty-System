@@ -47,7 +47,7 @@ class QrCodeController extends Controller
             if ($qr->order_id) {
                 $order = Order::findOrFail($qr->order_id);
                 $order->update(['customer_id' => $customer->id]);
-                ProcessPaidOrder::dispatch($order->id);
+                ProcessPaidOrder::dispatch($order->id, $qr->business_id);
             }
 
             return ['claimed' => true, 'customer_id' => $customer->id];

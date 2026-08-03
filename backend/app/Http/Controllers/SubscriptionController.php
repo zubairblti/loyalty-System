@@ -151,5 +151,4 @@ class SubscriptionController extends Controller
             'active' => $payment->fresh()->status === 'approved',
         ];
     }
-
 }

@@ -3,6 +3,9 @@
 use App\Http\Middleware\AuthenticateCustomer;
 use App\Http\Middleware\RequireActiveSubscription;
 use App\Http\Middleware\RequireSuperAdmin;
+use App\Http\Middleware\UseAuthenticatedTenant;
+use App\Http\Middleware\UseCustomerTenant;
+use App\Http\Middleware\UseQrTenant;
 use App\Http\Middleware\VerifyIntegrationSignature;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -24,6 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'customer.auth' => AuthenticateCustomer::class,
             'super.admin' => RequireSuperAdmin::class,
             'subscription.active' => RequireActiveSubscription::class,
+            'tenant.auth' => UseAuthenticatedTenant::class,
+            'tenant.customer' => UseCustomerTenant::class,
+            'tenant.qr' => UseQrTenant::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

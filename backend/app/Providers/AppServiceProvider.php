@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Contracts\SmsSender;
 use App\Services\Sms\LogSmsSender;
 use App\Services\Sms\TwilioSmsSender;
+use App\Tenancy\TenantContext;
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 
@@ -15,6 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(TenantContext::class);
         $this->app->bind(SmsSender::class, function () {
             return match (config('services.sms.driver')) {
                 'twilio' => new TwilioSmsSender,

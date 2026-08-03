@@ -50,6 +50,7 @@ class OnboardingSubscriptionTest extends TestCase
         ])->assertCreated();
 
         $admin = User::factory()->create(['business_id' => null, 'role' => 'super_admin']);
+        $this->useSystemAccess();
         $payment = PaymentSubmission::firstOrFail();
         $this->actingAs($admin)->postJson("/api/admin/payments/{$payment->id}/review", [
             'status' => 'approved',

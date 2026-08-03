@@ -46,7 +46,7 @@ class PosController extends Controller
             'payment_method' => $data['payment_method'], 'status' => 'paid', 'paid_at' => now(),
         ]);
         if ($customer) {
-            ProcessPaidOrder::dispatch($order->id);
+            ProcessPaidOrder::dispatch($order->id, $businessId);
         }
 
         return response()->json($order->load('customer'), 201);

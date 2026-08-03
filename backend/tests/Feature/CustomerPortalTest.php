@@ -42,7 +42,8 @@ class CustomerPortalTest extends TestCase
             'code' => '123456',
         ])->assertOk()->assertJsonPath('balance', 0);
 
-        $customer = Customer::where('business_id', $business->id)->where('phone', '+923001234567')->firstOrFail();
+        $this->useTenant($business->id);
+        $customer = Customer::where('phone', '+923001234567')->firstOrFail();
         $order = Order::create([
             'business_id' => $business->id,
             'customer_id' => $customer->id,
@@ -82,6 +83,8 @@ class CustomerPortalTest extends TestCase
 
     public function test_customer_dashboard_requires_customer_session(): void
     {
+        $plan = Plan::create(['name' => 'Test']);
+        Business::create(['plan_id' => $plan->id, 'name' => 'Cafe', 'slug' => 'cafe']);
         $this->getJson('/api/customer/cafe/dashboard')->assertUnauthorized();
     }
 }
