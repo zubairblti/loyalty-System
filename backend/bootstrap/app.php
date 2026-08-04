@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AuthenticateCustomer;
 use App\Http\Middleware\RequireActiveSubscription;
+use App\Http\Middleware\RequireCompleteBusinessProfile;
 use App\Http\Middleware\RequireSuperAdmin;
 use App\Http\Middleware\UseAuthenticatedTenant;
 use App\Http\Middleware\UseCustomerTenant;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'customer.auth' => AuthenticateCustomer::class,
             'super.admin' => RequireSuperAdmin::class,
             'subscription.active' => RequireActiveSubscription::class,
+            'profile.complete' => RequireCompleteBusinessProfile::class,
             'tenant.auth' => UseAuthenticatedTenant::class,
             'tenant.customer' => UseCustomerTenant::class,
             'tenant.qr' => UseQrTenant::class,

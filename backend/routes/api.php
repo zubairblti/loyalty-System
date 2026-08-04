@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BusinessBrandingController;
+use App\Http\Controllers\BusinessProfileController;
 use App\Http\Controllers\CustomerPortalController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\IntegrationController;
@@ -24,6 +26,7 @@ Route::post('/webhooks/safepay', SafepayWebhookController::class);
 Route::post('/qr/{token}/claim', [QrCodeController::class, 'claim'])->middleware(['tenant.qr', 'throttle:20,1']);
 Route::prefix('/customer/{slug}')->middleware(['web', 'tenant.customer'])->group(function () {
     Route::get('/business', [CustomerPortalController::class, 'business']);
+    Route::get('/logo', [CustomerPortalController::class, 'logo']);
     Route::post('/register', [CustomerPortalController::class, 'register']);
     Route::post('/register/resend', [CustomerPortalController::class, 'resendRegistration']);
     Route::post('/register/verify', [CustomerPortalController::class, 'verifyRegistration']);
@@ -38,11 +41,22 @@ Route::prefix('/customer/{slug}')->middleware(['web', 'tenant.customer'])->group
 Route::middleware(['web', 'auth:sanctum', 'tenant.auth'])->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/notifications', [AuthController::class, 'notifications']);
+    Route::post('/notifications/read', [AuthController::class, 'readNotifications']);
     Route::get('/subscription', [SubscriptionController::class, 'status']);
     Route::post('/subscription/payments', [SubscriptionController::class, 'submitPayment']);
     Route::post('/subscription/safepay/checkout', [SubscriptionController::class, 'createSafepayCheckout']);
+    Route::post('/subscription/safepay/{tracker}/processing', [SubscriptionController::class, 'markSafepayProcessing']);
     Route::get('/subscription/safepay/{tracker}', [SubscriptionController::class, 'safepayStatus']);
     Route::middleware('subscription.active')->group(function () {
+        Route::get('/business/profile', [BusinessProfileController::class, 'show']);
+        Route::put('/business/profile', [BusinessProfileController::class, 'update']);
+    });
+    Route::middleware(['subscription.active', 'profile.complete'])->group(function () {
+        Route::get('/business/branding', [BusinessBrandingController::class, 'show']);
+        Route::post('/business/branding', [BusinessBrandingController::class, 'update']);
+        Route::delete('/business/branding', [BusinessBrandingController::class, 'reset']);
+        Route::get('/business/branding/logo', [BusinessBrandingController::class, 'logo']);
         Route::get('/dashboard', DashboardController::class);
         Route::get('/integrations', [IntegrationController::class, 'index']);
         Route::post('/domains', [IntegrationController::class, 'storeDomain']);
@@ -57,8 +71,14 @@ Route::middleware(['web', 'auth:sanctum', 'tenant.auth'])->group(function () {
 
 Route::prefix('/admin')->middleware(['web', 'auth:sanctum', 'tenant.auth', 'super.admin'])->group(function () {
     Route::get('/dashboard', [AdminController::class, 'dashboard']);
+    Route::get('/businesses', [AdminController::class, 'businesses']);
+    Route::post('/businesses', [AdminController::class, 'createBusiness']);
+    Route::get('/businesses/{business}', [AdminController::class, 'businessDetail']);
     Route::patch('/businesses/{business}', [AdminController::class, 'updateBusiness']);
-    Route::put('/plan', [AdminController::class, 'savePlan']);
+    Route::post('/plans', [AdminController::class, 'storePlan']);
+    Route::put('/plans/{plan}', [AdminController::class, 'updatePlan']);
+    Route::delete('/plans/{plan}', [AdminController::class, 'deletePlan']);
+    Route::post('/plans/{plan}/restore', [AdminController::class, 'restorePlan']);
     Route::post('/payments/{payment}/review', [AdminController::class, 'reviewPayment']);
     Route::get('/payments/{payment}/receipt', [AdminController::class, 'paymentReceipt']);
     Route::post('/businesses/{business}/cash-payment', [AdminController::class, 'recordCash']);

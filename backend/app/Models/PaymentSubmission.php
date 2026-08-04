@@ -11,7 +11,7 @@ class PaymentSubmission extends Model
 
     protected $guarded = [];
 
-    protected $casts = ['reviewed_at' => 'datetime'];
+    protected $casts = ['reviewed_at' => 'datetime', 'payment_date' => 'datetime'];
 
     public function business()
     {
@@ -20,6 +20,6 @@ class PaymentSubmission extends Model
 
     public function plan()
     {
-        return $this->belongsTo(Plan::class);
+        return $this->belongsTo(Plan::class)->withTrashed();
     }
 }

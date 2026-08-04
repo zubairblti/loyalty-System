@@ -6,6 +6,8 @@ use App\Mail\VerificationCodeMail;
 use App\Models\Business;
 use App\Models\User;
 use App\Models\VerificationCode;
+use App\Services\AuditLogger;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -19,9 +21,9 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->validate(['email' => ['required', 'email'], 'password' => ['required']]);
-        abort_unless(Auth::attempt($credentials, true), 422, 'Invalid credentials.');
+        abort_unless(Auth::guard('web')->attempt($credentials, true), 422, 'Invalid credentials.');
         if (! $request->user()->email_verified_at) {
-            Auth::logout();
+            Auth::guard('web')->logout();
             abort(403, 'Verify your email before signing in.');
         }
         $request->session()->regenerate();
@@ -38,6 +40,8 @@ class AuthController extends Controller
             'phone' => ['required', 'string', 'max:30'],
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
+        $data['phone'] = PhoneNumber::normalize($data['phone']);
+        validator($data, ['phone' => ['required', 'unique:users,phone']])->validate();
         $data['password'] = Hash::make($data['password']);
         $verification = $this->issueCode($data['email'], 'registration', $data);
 
@@ -54,7 +58,7 @@ class AuthController extends Controller
         return ['sent' => true, 'expires_in' => 120, 'expires_at' => $verification->expires_at->toIso8601String()];
     }
 
-    public function verifyRegistration(Request $request)
+    public function verifyRegistration(Request $request, AuditLogger $audit)
     {
         $data = $request->validate(['email' => ['required', 'email'], 'code' => ['required', 'string', 'max:20']]);
         $verification = $this->validCode($data['email'], 'registration', $data['code']);
@@ -65,7 +69,10 @@ class AuthController extends Controller
         while (Business::where('slug', $slug)->exists()) {
             $slug = "{$slugBase}-".++$counter;
         }
-        $business = Business::create(['name' => $pending['business_name'], 'slug' => $slug, 'plan_id' => null]);
+        $business = Business::create([
+            'name' => $pending['business_name'], 'slug' => $slug, 'plan_id' => null,
+            'status' => 'pending', 'active' => false,
+        ]);
         $user = User::create([
             'business_id' => $business->id,
             'name' => $pending['name'],
@@ -76,8 +83,14 @@ class AuthController extends Controller
             'email_verified_at' => now(),
         ]);
         $verification->update(['consumed_at' => now()]);
-        Auth::login($user, true);
+        Auth::guard('web')->login($user, true);
         $request->session()->regenerate();
+        $audit->log('business.registered', $business, [], [
+            'name' => $business->name,
+            'slug' => $business->slug,
+            'owner_id' => $user->id,
+            'status' => $business->status,
+        ], $business->id, $request);
 
         return $this->me($request);
     }
@@ -114,6 +127,18 @@ class AuthController extends Controller
         Auth::guard('web')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        return response()->noContent();
+    }
+
+    public function notifications(Request $request)
+    {
+        return $request->user()->notifications()->latest()->limit(30)->get();
+    }
+
+    public function readNotifications(Request $request)
+    {
+        $request->user()->unreadNotifications->markAsRead();
 
         return response()->noContent();
     }

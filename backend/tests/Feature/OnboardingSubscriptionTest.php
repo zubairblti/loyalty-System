@@ -14,7 +14,7 @@ class OnboardingSubscriptionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_verified_business_is_blocked_until_payment_is_approved(): void
+    public function test_business_must_pay_and_complete_profile_before_dashboard_access(): void
     {
         Mail::fake();
         $plan = Plan::create([
@@ -53,10 +53,21 @@ class OnboardingSubscriptionTest extends TestCase
         $this->useSystemAccess();
         $payment = PaymentSubmission::firstOrFail();
         $this->actingAs($admin)->postJson("/api/admin/payments/{$payment->id}/review", [
-            'status' => 'approved',
+            'status' => 'paid',
         ])->assertOk();
 
+        $this->actingAs($owner)->getJson('/api/dashboard')->assertStatus(428);
+        $this->actingAs($owner)->putJson('/api/business/profile', [
+            'name' => 'New Store',
+            'address' => '10 Main Boulevard',
+            'category' => 'Retail',
+            'city' => 'Lahore',
+            'country' => 'PK',
+        ])->assertOk()->assertJsonPath('profile_completed', true);
         $this->actingAs($owner)->getJson('/api/dashboard')->assertOk();
         $this->assertSame($plan->id, Business::where('slug', 'new-store')->value('plan_id'));
+        $this->assertDatabaseHas('audit_logs', ['action' => 'business.registered', 'business_id' => $owner->business_id]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'payment.approved', 'business_id' => $owner->business_id]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'profile.completed', 'business_id' => $owner->business_id]);
     }
 }

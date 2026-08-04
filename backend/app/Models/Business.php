@@ -8,9 +8,21 @@ class Business extends Model
 {
     protected $guarded = [];
 
+    protected $casts = [
+        'active' => 'boolean',
+        'profile_completed_at' => 'datetime',
+    ];
+
+    protected $appends = ['profile_completed'];
+
+    public function getProfileCompletedAttribute(): bool
+    {
+        return $this->profile_completed_at !== null;
+    }
+
     public function plan()
     {
-        return $this->belongsTo(Plan::class);
+        return $this->belongsTo(Plan::class)->withTrashed();
     }
 
     public function customers()
@@ -36,5 +48,10 @@ class Business extends Model
     public function activeSubscription()
     {
         return $this->hasOne(Subscription::class)->where('status', 'active')->where('ends_at', '>', now())->latestOfMany();
+    }
+
+    public function owner()
+    {
+        return $this->hasOne(User::class)->where('role', 'owner');
     }
 }

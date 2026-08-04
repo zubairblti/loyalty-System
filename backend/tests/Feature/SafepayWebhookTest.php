@@ -79,7 +79,7 @@ class SafepayWebhookTest extends TestCase
         $this->assertDatabaseCount('subscriptions', 1);
         $this->assertDatabaseHas('payment_submissions', [
             'safepay_tracker' => 'track_subscription_1',
-            'status' => 'approved',
+            'status' => 'paid',
             'card_last_four' => '1096',
         ]);
     }

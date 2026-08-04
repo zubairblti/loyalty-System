@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -22,8 +23,17 @@ class CustomerPortalController extends Controller
 {
     public function business(string $slug)
     {
-        return Business::where('slug', $slug)->where('active', true)
-            ->firstOrFail(['id', 'name', 'slug', 'currency', 'points_per_100']);
+        $business = Business::where('slug', $slug)->where('active', true)->firstOrFail();
+
+        return $this->brandedBusiness($business);
+    }
+
+    public function logo(string $slug)
+    {
+        $business = Business::where('slug', $slug)->where('active', true)->firstOrFail();
+        abort_unless($business->brand_logo_path && Storage::disk('local')->exists($business->brand_logo_path), 404);
+
+        return response()->file(Storage::disk('local')->path($business->brand_logo_path), ['Cache-Control' => 'public, max-age=3600']);
     }
 
     public function register(Request $request, string $slug)
@@ -167,7 +177,7 @@ class CustomerPortalController extends Controller
 
         return [
             'customer' => $customer,
-            'business' => Business::findOrFail($customer->business_id, ['id', 'name', 'slug', 'currency']),
+            'business' => $this->brandedBusiness(Business::findOrFail($customer->business_id)),
             'balance' => $balance,
             'tier' => $tier,
             'next_tier' => $nextTier,
@@ -257,5 +267,21 @@ class CustomerPortalController extends Controller
         $customer->update(['phone' => $data['phone']]);
 
         return $customer;
+    }
+
+    private function brandedBusiness(Business $business): array
+    {
+        return [
+            'id' => $business->id,
+            'name' => $business->name,
+            'slug' => $business->slug,
+            'currency' => $business->currency,
+            'points_per_100' => $business->points_per_100,
+            'brand_name' => $business->brand_name ?: $business->name,
+            'brand_primary_color' => $business->brand_primary_color ?: '#1d252b',
+            'brand_accent_color' => $business->brand_accent_color ?: '#e4b94e',
+            'brand_text_color' => $business->brand_text_color ?: '#ffffff',
+            'logo_url' => $business->brand_logo_path ? "/api/customer/{$business->slug}/logo?v=".rawurlencode(basename($business->brand_logo_path)) : null,
+        ];
     }
 }

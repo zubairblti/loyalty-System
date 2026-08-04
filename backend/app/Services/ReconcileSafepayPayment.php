@@ -13,7 +13,7 @@ class ReconcileSafepayPayment
 
     public function handle(PaymentSubmission $payment): PaymentSubmission
     {
-        if ($payment->method !== 'card' || ! $payment->safepay_tracker || $payment->status === 'approved') {
+        if ($payment->method !== 'card' || ! $payment->safepay_tracker || $payment->status === 'paid') {
             return $payment;
         }
 
