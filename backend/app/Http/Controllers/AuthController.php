@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\User;
 use App\Models\VerificationCode;
 use App\Services\AuditLogger;
+use App\Services\NotificationService;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,8 +21,9 @@ class AuthController extends Controller
 {
     public function login(Request $request)
     {
-        $credentials = $request->validate(['email' => ['required', 'email'], 'password' => ['required']]);
-        abort_unless(Auth::guard('web')->attempt($credentials, true), 422, 'Invalid credentials.');
+        $data = $request->validate(['email' => ['required', 'email'], 'password' => ['required'], 'remember' => ['sometimes', 'boolean']]);
+        $credentials = ['email' => $data['email'], 'password' => $data['password']];
+        abort_unless(Auth::guard('web')->attempt($credentials, (bool) ($data['remember'] ?? false)), 422, 'Invalid credentials.');
         if (! $request->user()->email_verified_at) {
             Auth::guard('web')->logout();
             abort(403, 'Verify your email before signing in.');
@@ -58,7 +60,7 @@ class AuthController extends Controller
         return ['sent' => true, 'expires_in' => 120, 'expires_at' => $verification->expires_at->toIso8601String()];
     }
 
-    public function verifyRegistration(Request $request, AuditLogger $audit)
+    public function verifyRegistration(Request $request, AuditLogger $audit, NotificationService $notifications)
     {
         $data = $request->validate(['email' => ['required', 'email'], 'code' => ['required', 'string', 'max:20']]);
         $verification = $this->validCode($data['email'], 'registration', $data['code']);
@@ -91,6 +93,9 @@ class AuthController extends Controller
             'owner_id' => $user->id,
             'status' => $business->status,
         ], $business->id, $request);
+        User::where('role', 'super_admin')->each(fn (User $admin) => $notifications->send(
+            $admin, 'business_registered', 'New business registered', "{$business->name} has created a business account.", '/admin', "business:{$business->id}:registered",
+        ));
 
         return $this->me($request);
     }
@@ -131,14 +136,38 @@ class AuthController extends Controller
         return response()->noContent();
     }
 
+    public function updatePassword(Request $request)
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'current_password:web'],
+            'password' => ['required', 'confirmed', Password::min(8)],
+        ]);
+        $request->user()->update(['password' => $data['password']]);
+
+        return response()->noContent();
+    }
+
     public function notifications(Request $request)
     {
-        return $request->user()->notifications()->latest()->limit(30)->get();
+        $paginator = $request->user()->notifications()->latest()->paginate(20);
+
+        return response()->json([
+            ...$paginator->toArray(),
+            'unread_count' => $request->user()->unreadNotifications()->count(),
+        ]);
     }
 
     public function readNotifications(Request $request)
     {
         $request->user()->unreadNotifications->markAsRead();
+
+        return response()->noContent();
+    }
+
+    public function readNotification(Request $request, string $notification)
+    {
+        $item = $request->user()->notifications()->findOrFail($notification);
+        $item->markAsRead();
 
         return response()->noContent();
     }

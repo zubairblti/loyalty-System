@@ -3,17 +3,20 @@ import { CardCapture, PayerAuthentication } from '@sfpy/atoms'
 import '@sfpy/atoms/styles'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  BarChart3, Building2, CreditCard, Globe2, LayoutDashboard, LogOut, MonitorSmartphone,
+  Building2, CreditCard, Globe2, LayoutDashboard, LogOut, MonitorSmartphone,
   Activity, ArrowLeft, BadgeCheck, Bell, CircleUserRound, Crown, Gem, Medal, Plus, QrCode, ReceiptText, Search, Settings2, ShieldCheck, Star, Trash2, UserPlus, Users, WalletCards, X,
 } from 'lucide-react'
 import { api, login, prepareCsrf } from './api'
-import { connectRealtime } from './realtime'
+import { connectNotifications, connectRealtime } from './realtime'
 import { formatPhone } from './phone'
 import { toast } from './toast'
+import { Pagination, PasswordInput, PhoneInput, SecurityForm } from './components/Common'
+import { useDismissable, useFocusTrap } from './hooks'
+import { contrastText } from './design'
 import './styles.css'
 
 const money = (value) => new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', maximumFractionDigits: 0 }).format(value || 0)
-const defaultBranding = { brand_name: 'LoyaltyOS', brand_primary_color: '#1d252b', brand_accent_color: '#e4b94e', brand_text_color: '#ffffff', logo_url: null }
+const defaultBranding = { brand_name: 'LoyaltyOS', brand_primary_color: '#123e63', brand_accent_color: '#16805a', brand_text_color: '#ffffff', logo_url: null }
 const tierPresets = {
   Silver: ['Priority Support', 'Birthday Reward', 'Early Access to Promotions'],
   Gold: ['5% Discount', 'Free Delivery', 'Exclusive Offers'],
@@ -22,6 +25,7 @@ const tierPresets = {
   VIP: ['Highest Priority Support', 'Custom Pricing', 'Exclusive Invitations', 'Premium Membership Benefits'],
 }
 const tierIcons = { Silver: Medal, Gold: Star, Platinum: Crown, Diamond: Gem, VIP: ShieldCheck }
+const hashView = fallback => decodeURIComponent(window.location.hash.slice(1)) || fallback
 
 function TierIcon({ name, size = 20 }) {
   const Icon = tierIcons[name] || BadgeCheck
@@ -35,11 +39,6 @@ function AuthLoadingScreen({ label = 'Checking your session...' }) {
     <strong>{label}</strong>
   </main>
 }
-const contrastText = hex => {
-  const value = (hex || '#1d252b').replace('#', '')
-  const [r, g, b] = [0, 2, 4].map(index => parseInt(value.slice(index, index + 2), 16))
-  return ((r * 299 + g * 587 + b * 114) / 1000) > 150 ? '#17211d' : '#ffffff'
-}
 const brandingStyle = branding => ({
   '--business-primary': branding?.brand_primary_color || defaultBranding.brand_primary_color,
   '--business-primary-text': branding?.brand_text_color || defaultBranding.brand_text_color,
@@ -52,12 +51,6 @@ function BrandLogo({ branding, small = false }) {
   return branding?.logo_url
     ? <img className={`brand-logo${small ? ' small' : ''}`} src={branding.logo_url} alt={`${name} logo`}/>
     : <span className={`brand-mark${small ? ' small' : ''}`}>{name.charAt(0).toUpperCase()}</span>
-}
-
-function PhoneInput({ name = 'phone', value, defaultValue, onChange, ...props }) {
-  const [phone, setPhone] = useState(formatPhone(value ?? defaultValue ?? ''))
-  useEffect(() => { if (value !== undefined) setPhone(formatPhone(value)) }, [value])
-  return <input {...props} name={name} value={phone} inputMode="numeric" maxLength="13" placeholder="(0300)1234567" onChange={event => { const formatted = formatPhone(event.target.value); setPhone(formatted); onChange?.(event) }}/>
 }
 
 function Login({ onLogin }) {
@@ -77,7 +70,7 @@ function Login({ onLogin }) {
   const submitLogin = async e => {
     e.preventDefault(); setError('')
     const form = Object.fromEntries(new FormData(e.currentTarget))
-    try { onLogin(await login(form.email, form.password)) } catch (err) { setError(err.response?.data?.message || 'Login failed') }
+    try { onLogin(await login(form.email, form.password, form.remember === 'on')) } catch (err) { setError(err.response?.data?.message || 'Login failed') }
   }
   const submitRegister = async e => {
     e.preventDefault(); setError('')
@@ -120,8 +113,8 @@ function Login({ onLogin }) {
         {mode === 'login' && <form className="auth-form" onSubmit={submitLogin}>
           <div><h2>Business sign in</h2><p>Access your LoyaltyOS workspace</p></div>
           <label>Email address<input name="email" value={email} onChange={e => setEmail(e.target.value)} type="email" required placeholder="you@business.com"/></label>
-          <label>Password<input name="password" type="password" required placeholder="Enter your password"/></label>
-          <div className="auth-row"><label className="check-label"><input type="checkbox"/>Remember me</label><button type="button" className="text-button" onClick={() => switchMode('forgot')}>Forgot password?</button></div>
+          <label>Password<PasswordInput name="password" required placeholder="Enter your password"/></label>
+          <div className="auth-row"><label className="check-label"><input name="remember" type="checkbox"/>Remember me for 30 days</label><button type="button" className="text-button" onClick={() => switchMode('forgot')}>Forgot password?</button></div>
           {notice && <div className="notice auth-notice">{notice}</div>}{error && <div className="error">{error}</div>}
           <button className="primary auth-submit">Sign in</button>
           <p className="auth-switch">New to LoyaltyOS? <button type="button" onClick={() => switchMode('register')}>Create a business account</button></p>
@@ -133,8 +126,8 @@ function Login({ onLogin }) {
             <label>Full name<input name="name" required placeholder="Your full name"/></label>
             <label>Email address<input name="email" type="email" required placeholder="you@business.com"/></label>
             <label>Mobile number<PhoneInput required/></label>
-            <label>Password<input name="password" type="password" minLength="8" required placeholder="Minimum 8 characters"/></label>
-            <label>Confirm password<input name="password_confirmation" type="password" minLength="8" required placeholder="Repeat password"/></label>
+            <label>Password<PasswordInput name="password" minLength="8" required placeholder="Minimum 8 characters"/></label>
+            <label>Confirm password<PasswordInput name="password_confirmation" minLength="8" required placeholder="Repeat password"/></label>
           </div>
           {error && <div className="error">{error}</div>}
           <button className="primary auth-submit">Create account</button>
@@ -157,8 +150,8 @@ function Login({ onLogin }) {
         {mode === 'reset' && <form className="auth-form" onSubmit={reset}>
           <div><h2>Set a new password</h2><p>Code sent to {pendingEmail}</p></div>
           <label>Verification code<input name="code" inputMode="numeric" maxLength="6" required/></label>
-          <label>New password<input name="password" type="password" minLength="8" required/></label>
-          <label>Confirm password<input name="password_confirmation" type="password" minLength="8" required/></label>
+          <label>New password<PasswordInput name="password" minLength="8" required/></label>
+          <label>Confirm password<PasswordInput name="password_confirmation" minLength="8" required/></label>
           <div className="code-expiry">{seconds ? `Expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'Code expired'}</div>
           {error && <div className="error">{error}</div>}<button className="primary auth-submit">Update password</button>
         </form>}
@@ -171,10 +164,11 @@ function AdminLogin({ onLogin }) {
   const [email, setEmail] = useState('admin@example.com')
   const [password, setPassword] = useState('password')
   const [error, setError] = useState('')
+  const [remember, setRemember] = useState(false)
   const submit = async e => {
     e.preventDefault()
     try {
-      const account = await login(email, password)
+      const account = await login(email, password, remember)
       if (account.role !== 'super_admin') {
         await api.post('/logout')
         setError('This account does not have Super Admin access.')
@@ -188,7 +182,8 @@ function AdminLogin({ onLogin }) {
       <div className="admin-emblem"><ShieldCheck size={24}/></div>
       <div><small>LOYALTYOS CONTROL</small><h1>Super Admin</h1><p>Platform operations and tenant management</p></div>
       <label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)}/></label>
-      <label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)}/></label>
+      <label>Password<PasswordInput value={password} onChange={e => setPassword(e.target.value)}/></label>
+      <label className="check-label"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}/>Remember me for 30 days</label>
       {error && <div className="error">{error}</div>}
       <button className="admin-primary">Sign in to control center</button>
     </form>
@@ -197,23 +192,53 @@ function AdminLogin({ onLogin }) {
 
 function AdminPortal({ user, setUser }) {
   const [data, setData] = useState(null)
-  const [view, setView] = useState('Overview')
+  const [view, setView] = useState(() => hashView('Overview'))
   const [paymentFilters, setPaymentFilters] = useState({ business: '', status: '', from: '', to: '' })
+  const [paymentPage, setPaymentPage] = useState(1)
+  const [auditSearch, setAuditSearch] = useState('')
+  const [auditPage, setAuditPage] = useState(1)
+  const [auditFilters, setAuditFilters] = useState({ action: '', business_id: '', actor_id: '', from: '', to: '' })
+  const [auditData, setAuditData] = useState({ data: [], current_page: 1, last_page: 1, total: 0, filters: { actions: [], businesses: [], actors: [] } })
   const [selectedBusiness, setSelectedBusiness] = useState(null)
   const [message, setMessage] = useState('')
   const [showBusinessForm, setShowBusinessForm] = useState(false)
   const [selectedPlanId, setSelectedPlanId] = useState(null)
+  const [planSearch, setPlanSearch] = useState('')
   const [cashPlanId, setCashPlanId] = useState('')
   const [cashCycle, setCashCycle] = useState('monthly')
   const [businessFilters, setBusinessFilters] = useState({ search: '', status: '', plan: '' })
   const [businessDetail, setBusinessDetail] = useState(null)
   const [businessDirectory, setBusinessDirectory] = useState(null)
+  const [notifications, setNotifications] = useState([])
+  const [notificationMeta, setNotificationMeta] = useState(null)
+  const [notificationPage, setNotificationPage] = useState(1)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [promptState, setPromptState] = useState(null)
   const [businessPage, setBusinessPage] = useState(1)
   const load = () => api.get('/admin/dashboard').then(r => {
     setData(r.data)
     setSelectedBusiness(current => current ? r.data.businesses.find(item => item.id === current.id) || null : null)
   })
+  const loadNotifications = (page = notificationPage) => api.get('/notifications', { params: { page }, showLoader: false }).then(r => { setNotifications(r.data.data || r.data); setNotificationMeta(r.data.meta || r.data); setUnreadCount(r.data.unread_count || 0) }).catch(() => {})
+  const requestReason = (title, required = true) => new Promise(resolve => setPromptState({ title, required, resolve }))
+  useDismissable(showNotifications, () => setShowNotifications(false))
+  useFocusTrap(Boolean(promptState), '.reason-dialog')
+  useEffect(() => {
+    if (!promptState) return undefined
+    const close = event => { if (event.key === 'Escape') { promptState.resolve(null); setPromptState(null) } }
+    document.addEventListener('keydown', close)
+    return () => document.removeEventListener('keydown', close)
+  }, [promptState])
+  useEffect(() => setPaymentPage(1), [paymentFilters])
+  useEffect(() => {
+    if (user?.role !== 'super_admin' || view !== 'Activity') return undefined
+    const timer = window.setTimeout(() => api.get('/admin/activity', { params: { search: auditSearch || undefined, ...Object.fromEntries(Object.entries(auditFilters).map(([key, value]) => [key, value || undefined])), page: auditPage }, showLoader: false }).then(response => setAuditData(response.data)).catch(() => {}), 250)
+    return () => window.clearTimeout(timer)
+  }, [user, view, auditSearch, auditFilters, auditPage])
   useEffect(() => { if (user?.role === 'super_admin') load() }, [user])
+  useEffect(() => { if (user?.role === 'super_admin') loadNotifications() }, [user])
+  useEffect(() => user?.id ? connectNotifications(user.id, loadNotifications) : undefined, [user?.id])
   useEffect(() => {
     if (user?.role !== 'super_admin') return undefined
     const timer = window.setTimeout(() => {
@@ -228,14 +253,14 @@ function AdminPortal({ user, setUser }) {
   if (!data) return <div className="loading full">Loading platform...</div>
 
   const updateBusinessStatus = async (business, status) => {
-    const reason = status === 'active' ? null : window.prompt(`Reason for ${status}:`)
+    const reason = status === 'active' ? null : await requestReason(`Reason for ${status}`)
     if (status !== 'active' && !reason) return
     try { await api.patch(`/admin/businesses/${business.id}`, { status, reason }); setMessage(`Business status changed to ${status}.`); await load(); setBusinessFilters(current => ({ ...current })) }
     catch (err) { setMessage(err.response?.data?.message || 'Business status could not be changed.') }
   }
   const logout = async () => { await api.post('/logout'); setUser(null) }
   const reviewPayment = async (payment, status) => {
-    const admin_note = window.prompt(status === 'paid' ? 'Verification note (optional):' : `Reason for ${status}:`)
+    const admin_note = await requestReason(status === 'paid' ? 'Verification note' : `Reason for ${status}`, status !== 'paid')
     if (status !== 'paid' && !admin_note) return
     await api.post(`/admin/payments/${payment.id}/review`, { status, admin_note })
     setMessage(`Payment marked ${status}.`); load()
@@ -268,11 +293,11 @@ function AdminPortal({ user, setUser }) {
       active: form.active === 'on', public: form.public === 'on',
       features: form.features.split('\n').map(value => value.trim()).filter(Boolean),
     }
-    try { selectedPlanId ? await api.put(`/admin/plans/${selectedPlanId}`, payload) : await api.post('/admin/plans', payload); setMessage('Plan saved.'); load() }
+    try { if (selectedPlanId) await api.put(`/admin/plans/${selectedPlanId}`, payload); else await api.post('/admin/plans', payload); setMessage('Plan saved.'); load() }
     catch (err) { setMessage(err.response?.data?.message || 'Plan could not be saved.') }
   }
   const deletePlan = async plan => {
-    try { plan.deleted_at ? await api.post(`/admin/plans/${plan.id}/restore`) : await api.delete(`/admin/plans/${plan.id}`); setMessage(plan.deleted_at ? 'Plan restored.' : 'Plan archived.'); setSelectedPlanId(null); load() }
+    try { if (plan.deleted_at) await api.post(`/admin/plans/${plan.id}/restore`); else await api.delete(`/admin/plans/${plan.id}`); setMessage(plan.deleted_at ? 'Plan restored.' : 'Plan archived.'); setSelectedPlanId(null); load() }
     catch (err) { setMessage(err.response?.data?.message || 'Plan status could not be changed.') }
   }
   const openBusiness = async business => {
@@ -282,19 +307,21 @@ function AdminPortal({ user, setUser }) {
   }
   const metrics = [
     ['Total businesses', data.metrics.businesses, Building2],
-    ['Active businesses', data.metrics.active_businesses, ShieldCheck],
-    ['Customers', data.metrics.customers, Users],
-    ['Orders processed', data.metrics.orders, ReceiptText],
-    ['Processed value', money(data.metrics.revenue_processed), CreditCard],
+    ['Active subscriptions', data.metrics.active_subscriptions, ShieldCheck],
+    ['Pending payments', data.metrics.pending_payments, ReceiptText],
+    ['Subscription revenue', money(data.metrics.subscription_revenue), CreditCard],
+    ['Active businesses', data.metrics.active_businesses || 0, Activity],
   ]
-  const filteredPayments = (data.payments || []).filter(payment => {
+  const allFilteredPayments = (data.payments || []).filter(payment => {
     const date = payment.created_at?.slice(0, 10)
     return (!paymentFilters.business || String(payment.business_id) === paymentFilters.business)
       && (!paymentFilters.status || payment.status === paymentFilters.status)
       && (!paymentFilters.from || date >= paymentFilters.from)
       && (!paymentFilters.to || date <= paymentFilters.to)
   })
+  const filteredPayments = allFilteredPayments.slice((paymentPage - 1) * 50, paymentPage * 50)
   const activePlans = data.plans.filter(plan => plan.active && !plan.deleted_at)
+  const visiblePlans = data.plans.filter(plan => plan.name.toLowerCase().includes(planSearch.toLowerCase()))
   const directoryBusinesses = businessDirectory?.data || data.businesses
   const cashPlan = activePlans.find(plan => String(plan.id) === String(cashPlanId)) || activePlans[0]
   const cashMonthlyPrice = Number(cashPlan?.monthly_price || 0)
@@ -303,14 +330,14 @@ function AdminPortal({ user, setUser }) {
     : cashMonthlyPrice) : 0
   return <div className="admin-shell">
     <aside className="admin-sidebar">
-      <div className="admin-brand"><span className="admin-emblem small"><ShieldCheck size={18}/></span><div><strong>LoyaltyOS</strong><small>Control center</small></div></div>
-      <nav><button className={view === 'Overview' ? 'active' : ''} onClick={() => setView('Overview')}><LayoutDashboard size={18}/>Platform overview</button><button className={view === 'Businesses' ? 'active' : ''} onClick={() => setView('Businesses')}><Building2 size={18}/>Businesses</button><button className={view === 'Payments' ? 'active' : ''} onClick={() => setView('Payments')}><ReceiptText size={18}/>Payments</button><button className={view === 'Plans' ? 'active' : ''} onClick={() => setView('Plans')}><CreditCard size={18}/>Plans</button><button className={view === 'Activity' ? 'active' : ''} onClick={() => setView('Activity')}><Activity size={18}/>Activity</button></nav>
+      <div className="admin-brand"><span className="admin-emblem small"><ShieldCheck size={18}/></span><div><strong>{user.admin_brand_name || 'LoyaltyOS'}</strong><small>{user.admin_brand_subtitle || 'Control center'}</small></div></div>
+      <nav><button className={view === 'Overview' ? 'active' : ''} onClick={() => setView('Overview')}><LayoutDashboard size={18}/>Platform overview</button><button className={view === 'Businesses' ? 'active' : ''} onClick={() => setView('Businesses')}><Building2 size={18}/>Businesses</button><button className={view === 'Payments' ? 'active' : ''} onClick={() => setView('Payments')}><ReceiptText size={18}/>Payments</button><button className={view === 'Plans' ? 'active' : ''} onClick={() => setView('Plans')}><CreditCard size={18}/>Plans</button><button className={view === 'Activity' ? 'active' : ''} onClick={() => setView('Activity')}><Activity size={18}/>Activity</button><button className={view === 'Notifications' ? 'active' : ''} onClick={() => setView('Notifications')}><Bell size={18}/>Notifications</button><button className={view === 'Security' ? 'active' : ''} onClick={() => setView('Security')}><ShieldCheck size={18}/>Security</button></nav>
       <div className="admin-account"><div><strong>{user.name}</strong><small>Super Administrator</small></div><button title="Log out" onClick={logout}><LogOut size={18}/></button></div>
     </aside>
     <main className="admin-workspace">
-      <header><div>{view !== 'Overview' && <button className="back-button" onClick={() => { setView(view === 'Business detail' ? 'Businesses' : 'Overview'); setBusinessDetail(null) }}><ArrowLeft size={17}/>{view === 'Business detail' ? 'Back to businesses' : 'Back to overview'}</button>}<small className="admin-eyebrow">PLATFORM OPERATIONS</small><h1>{view === 'Business detail' ? businessDetail?.name || selectedBusiness?.name || 'Business details' : view}</h1><p>{view === 'Plans' ? 'Create, publish and manage subscription plans' : view === 'Payments' ? 'Reconciled subscription payments across every business' : 'Tenant health, subscriptions and usage across LoyaltyOS'}</p></div>{view === 'Businesses' && <button className="admin-primary" onClick={() => setShowBusinessForm(value => !value)}><UserPlus size={17}/>Add business</button>}</header>
+      <header><div>{view !== 'Overview' && <button className="back-button" onClick={() => { setView(view === 'Business detail' ? 'Businesses' : 'Overview'); setBusinessDetail(null) }}><ArrowLeft size={17}/>{view === 'Business detail' ? 'Back to businesses' : 'Back to overview'}</button>}<small className="admin-eyebrow">PLATFORM OPERATIONS</small><h1>{view === 'Business detail' ? businessDetail?.name || selectedBusiness?.name || 'Business details' : view}</h1><p>{view === 'Plans' ? 'Create, publish and manage subscription plans' : view === 'Payments' ? 'Reconciled subscription payments across every business' : 'Tenant health, subscriptions and usage across LoyaltyOS'}</p></div><div className="workspace-actions"><button className="icon-button notification-button" title="Notifications" aria-label={`Notifications, ${unreadCount} unread`} aria-expanded={showNotifications} onClick={() => setShowNotifications(value => !value)}><Bell size={19}/>{unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showNotifications && <div className="notification-menu" role="menu"><div><strong>Notifications</strong><button onClick={async () => { await api.post('/notifications/read', {}, { showLoader: false }); loadNotifications() }}>Mark all read</button></div>{notifications.slice(0, 6).map(item => <button role="menuitem" className={`notification-entry${!item.read_at ? ' unread' : ''}`} key={item.id} onClick={async () => { if (!item.read_at) await api.post(`/notifications/${item.id}/read`, {}, { showLoader: false }); setShowNotifications(false); if (item.data.action_url) window.location.assign(item.data.action_url); else setView('Notifications'); loadNotifications() }}><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></button>)}<button className="notification-view-all" onClick={() => { setView('Notifications'); setShowNotifications(false) }}>View all notifications</button></div>}{view === 'Businesses' && <button className="admin-primary" onClick={() => setShowBusinessForm(value => !value)}><UserPlus size={17}/>Add business</button>}</div></header>
       {message && <div className="notice admin-notice">{message}</div>}
-      {view === 'Overview' && <><section className="admin-metrics">{metrics.map(([label, value, Icon]) => <article key={label}><div><small>{label}</small><strong>{value}</strong></div><span><Icon size={19}/></span></article>)}</section>
+      {view === 'Overview' && <><section className="admin-metrics">{metrics.map(([label, value, Icon]) => <article key={label}><div><small>{label}</small><strong>{value}</strong></div><span><Icon size={19}/></span></article>)}</section><AdminOverviewCharts charts={data.charts}/>
       <div className="admin-columns">
         <section className="panel"><div className="panel-head"><div><h2>Businesses</h2><p>Recent tenant accounts and platform usage</p></div></div>
           <table><thead><tr><th>Business</th><th>Plan</th><th>Customers</th><th>Orders</th><th>Status</th><th></th></tr></thead>
@@ -322,7 +349,7 @@ function AdminPortal({ user, setUser }) {
       </div></>}
       {view === 'Businesses' && <div className="business-admin-grid">
         {showBusinessForm && <form className="panel admin-create-business" onSubmit={createBusiness}><div className="panel-head"><div><h2>Create business</h2><p>Uses the same fields as self-registration</p></div></div><div className="plan-form-grid">
-          <label>Business name<input name="business_name" required/></label><label>Full name<input name="name" required/></label><label>Email address<input name="email" type="email" required/></label><label>Mobile number<PhoneInput required/></label><label>Password<input name="password" type="password" minLength="8" required/></label><label>Confirm password<input name="password_confirmation" type="password" minLength="8" required/></label><button className="admin-primary plan-save">Create pending business</button>
+          <label>Business name<input name="business_name" required/></label><label>Full name<input name="name" required/></label><label>Email address<input name="email" type="email" required/></label><label>Mobile number<PhoneInput required/></label><label>Password<PasswordInput name="password" minLength="8" required/></label><label>Confirm password<PasswordInput name="password_confirmation" minLength="8" required/></label><button className="admin-primary plan-save">Create pending business</button>
         </div></form>}
         <section className="panel business-directory"><div className="panel-head"><div><h2>All businesses</h2><p>Self-registered and administrator-created accounts</p></div></div><div className="business-filters"><label className="search-field"><Search size={16}/><input value={businessFilters.search} onChange={e => { setBusinessFilters({ ...businessFilters, search: e.target.value }); setBusinessPage(1) }} placeholder="Search name, owner, email or phone"/></label><select value={businessFilters.status} onChange={e => { setBusinessFilters({ ...businessFilters, status: e.target.value }); setBusinessPage(1) }}><option value="">All statuses</option><option value="pending">Pending</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="rejected">Rejected</option></select><select value={businessFilters.plan} onChange={e => { setBusinessFilters({ ...businessFilters, plan: e.target.value }); setBusinessPage(1) }}><option value="">All plans</option>{data.plans.map(plan => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
           <div className="tenant-list">{directoryBusinesses.map(b => <button key={b.id} onClick={() => openBusiness(b)}><span>{b.name[0]}</span><div><strong>{b.name}</strong><small>{b.owner?.email || b.owner?.phone || 'Owner unavailable'} · {b.plan?.name || 'Subscription required'}</small></div><b>{b.status}</b></button>)}
@@ -362,20 +389,65 @@ function AdminPortal({ user, setUser }) {
             </tr>)}
             {!filteredPayments.length && <tr><td colSpan="7" className="customer-empty">No payments match these filters.</td></tr>}</tbody>
           </table>
+          <Pagination meta={{ last_page: Math.max(1, Math.ceil(allFilteredPayments.length / 50)) }} page={paymentPage} onPage={setPaymentPage}/>
         </section>
       </div>}
       {view === 'Plans' && <div className="plan-management">
-        <section className="panel plan-catalog"><div className="panel-head"><div><h2>Subscription plans</h2><p>Published plans appear in business checkout</p></div><button className="admin-primary" onClick={() => setSelectedPlanId(null)}><Plus size={17}/>New plan</button></div>
-          <div className="plan-list">{data.plans.map(plan => <button className={selectedPlanId === plan.id ? 'selected' : ''} key={plan.id} onClick={() => setSelectedPlanId(plan.id)}><span><CreditCard size={17}/></span><div><strong>{plan.name}</strong><small>{money(plan.monthly_price)}/month · {plan.businesses_count} businesses</small></div><b>{plan.deleted_at ? 'Archived' : plan.active && plan.public ? 'Published' : 'Hidden'}</b></button>)}</div>
+        <section className="panel plan-catalog"><div className="panel-head"><div><h2>Subscription plans</h2><p>Published plans appear in business checkout</p></div><button className="admin-primary" onClick={() => setSelectedPlanId(null)}><Plus size={17}/>New plan</button></div><div className="table-toolbar"><label className="search-field"><Search size={16}/><input value={planSearch} onChange={event => setPlanSearch(event.target.value)} placeholder="Search plans" aria-label="Search plans"/></label></div>
+          <div className="plan-list">{visiblePlans.map(plan => <button className={selectedPlanId === plan.id ? 'selected' : ''} key={plan.id} onClick={() => setSelectedPlanId(plan.id)}><span><CreditCard size={17}/></span><div><strong>{plan.name}</strong><small>{money(plan.monthly_price)}/month · {plan.businesses_count} businesses</small></div><b>{plan.deleted_at ? 'Archived' : plan.active && plan.public ? 'Published' : 'Hidden'}</b></button>)}{!visiblePlans.length && <div className="customer-empty">No plans match your search.</div>}</div>
         </section>
         {(() => { const plan = data.plans.find(item => item.id === selectedPlanId) || {}; return <form key={plan.id || 'new'} className="panel" onSubmit={savePlan}>
           <div className="panel-head"><div><h2>{plan.id ? 'Edit plan' : 'Create plan'}</h2><p>Pricing, access limits and checkout visibility</p></div>{plan.id && <button type="button" title={plan.deleted_at ? 'Restore plan' : 'Archive plan'} className="icon-button" onClick={() => deletePlan(plan)}><Trash2 size={17}/></button>}</div>
           <div className="plan-form-grid"><label>Plan name<input name="name" required defaultValue={plan.name || ''}/></label><label>Monthly price (PKR)<input name="monthly_price" type="number" min="0" required defaultValue={plan.monthly_price ?? 5000}/></label><label className="wide">Description<textarea name="description" rows="2" defaultValue={plan.description || ''}/></label><label>Yearly discount (%)<input name="yearly_discount_percent" type="number" min="0" max="90" required defaultValue={plan.yearly_discount_percent ?? 30}/></label><label>Duration (months)<input name="duration_months" type="number" min="1" required defaultValue={plan.duration_months ?? 1}/></label><label>Checkout position <small>0 appears first</small><input name="display_order" type="number" min="0" required defaultValue={plan.display_order ?? 0}/></label><label>Verified domains<input name="domain_limit" type="number" min="0" required defaultValue={plan.domain_limit ?? 1}/></label><label>POS terminals<input name="terminal_limit" type="number" min="0" required defaultValue={plan.terminal_limit ?? 1}/></label><label>QR codes<input name="qr_limit" type="number" min="0" required defaultValue={plan.qr_limit ?? 10}/></label><label>Monthly orders<input name="monthly_order_limit" type="number" min="1" required defaultValue={plan.monthly_order_limit ?? 1000}/></label><label className="check-label"><input name="active" type="checkbox" defaultChecked={plan.active ?? true}/>Active</label><label className="check-label"><input name="public" type="checkbox" defaultChecked={plan.public ?? true}/>Public checkout</label><label className="features-field">Features, one per line<textarea name="features" rows="7" required defaultValue={(plan.features || ['Points ledger and customer rewards']).join('\n')}/></label><button className="admin-primary plan-save" disabled={Boolean(plan.deleted_at)}>Save plan</button></div>
         </form> })()}
       </div>}
-      {view === 'Activity' && <section className="panel payments-ledger"><div className="panel-head"><div><h2>Audit activity</h2><p>Administrative and business profile changes</p></div><span className="status">{data.audit_logs?.length || 0} events</span></div><table><thead><tr><th>Action</th><th>Business</th><th>Performed by</th><th>Date</th></tr></thead><tbody>{(data.audit_logs || []).map(log => <tr key={log.id}><td><strong>{log.action.replaceAll('.', ' ')}</strong></td><td>{log.business?.name || 'Platform'}</td><td>{log.actor?.name || 'System / gateway'}</td><td>{new Date(log.created_at).toLocaleString()}</td></tr>)}</tbody></table></section>}
+      {view === 'Activity' && <AdminAuditActivity audit={auditData} search={auditSearch} filters={auditFilters} onSearch={value => { setAuditSearch(value); setAuditPage(1) }} onFilters={value => { setAuditFilters(value); setAuditPage(1) }} page={auditPage} onPage={setAuditPage}/>}
+      {view === 'Notifications' && <section className="panel notification-page"><div className="panel-head"><div><h2>All notifications</h2><p>Platform and subscription activity</p></div><button className="secondary" onClick={async () => { await api.post('/notifications/read', {}, { showLoader: false }); loadNotifications() }}>Mark all as read</button></div><div>{notifications.map(item => <button key={item.id} className={`notification-entry${!item.read_at ? ' unread' : ''}`} onClick={async () => { if (!item.read_at) await api.post(`/notifications/${item.id}/read`, {}, { showLoader: false }); if (item.data.action_url) window.location.assign(item.data.action_url); loadNotifications() }}><span><Bell size={18}/></span><div><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></div></button>)}{!notifications.length && <div className="customer-empty">No notifications yet.</div>}</div><Pagination meta={notificationMeta} page={notificationPage} onPage={page => { setNotificationPage(page); loadNotifications(page) }}/></section>}
+      {view === 'Security' && <div className="settings-stack"><AdminProfileForm user={user} onUpdated={setUser}/><SecurityForm /></div>}
+      {promptState && <div className="admin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="reason-title"><form className="admin-modal reason-dialog" onSubmit={event => { event.preventDefault(); const value = new FormData(event.currentTarget).get('reason')?.trim() || null; promptState.resolve(value); setPromptState(null) }}><div className="panel-head"><div><h2 id="reason-title">{promptState.title}</h2><p>{promptState.required ? 'A reason is required for the audit history.' : 'Add an optional note for the audit history.'}</p></div><button type="button" className="icon-button" onClick={() => { promptState.resolve(null); setPromptState(null) }}><X size={17}/></button></div><div className="reason-dialog-body"><label>Note<textarea name="reason" rows="4" required={promptState.required} autoFocus/></label><div><button type="button" className="secondary" onClick={() => { promptState.resolve(null); setPromptState(null) }}>Cancel</button><button className="admin-primary">Continue</button></div></div></form></div>}
     </main>
   </div>
+}
+
+function AdminProfileForm({ user, onUpdated }) {
+  const [feedback, setFeedback] = useState(null)
+  const submit = async event => {
+    event.preventDefault(); setFeedback(null)
+    try {
+      const { data } = await api.put('/admin/profile', Object.fromEntries(new FormData(event.currentTarget)))
+      onUpdated(data); setFeedback({ type: 'notice', message: 'Admin profile and control-center branding updated.' })
+    } catch (error) {
+      setFeedback({ type: 'error', message: Object.values(error.response?.data?.errors || {})[0]?.[0] || error.response?.data?.message || 'Profile could not be updated.' })
+    }
+  }
+  return <form className="panel" onSubmit={submit}><div className="panel-head"><div><h2>Admin profile and branding</h2><p>Update your identity, login email and control-center name</p></div><Settings2 size={20}/></div><div className="admin-profile-fields"><label>Admin name<input name="name" required defaultValue={user.name}/></label><label>Login email<input name="email" type="email" required defaultValue={user.email}/></label><label>Brand name<input name="admin_brand_name" required defaultValue={user.admin_brand_name || 'LoyaltyOS'}/></label><label>Brand subtitle<input name="admin_brand_subtitle" required defaultValue={user.admin_brand_subtitle || 'Control center'}/></label><label className="wide">Current password <small>Only required when changing email</small><PasswordInput name="current_password" autoComplete="current-password"/></label>{feedback && <div className={`${feedback.type} wide`}>{feedback.message}</div>}<button className="primary wide">Save profile and branding</button></div></form>
+}
+
+function AdminAuditActivity({ audit, search, filters, onSearch, onFilters, page, onPage }) {
+  const options = audit.filters || { actions: [], businesses: [], actors: [] }
+  const update = (key, value) => onFilters({ ...filters, [key]: value })
+  return <section className="panel payments-ledger"><div className="panel-head"><div><h2>Admin activity</h2><p>Actions performed by Super Administrators only</p></div><span className="status">{audit.total || 0} events</span></div><div className="audit-filters"><label className="search-field"><Search size={16}/><input value={search} onChange={event => onSearch(event.target.value)} placeholder="Search action, business or admin"/></label><label>Action<select value={filters.action} onChange={event => update('action', event.target.value)}><option value="">All actions</option>{options.actions.map(action => <option key={action} value={action}>{action.replaceAll('.', ' ')}</option>)}</select></label><label>Business<select value={filters.business_id} onChange={event => update('business_id', event.target.value)}><option value="">All businesses</option>{options.businesses.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Admin<select value={filters.actor_id} onChange={event => update('actor_id', event.target.value)}><option value="">All admins</option>{options.actors.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>From<input type="date" value={filters.from} onChange={event => update('from', event.target.value)}/></label><label>To<input type="date" value={filters.to} onChange={event => update('to', event.target.value)}/></label><button className="secondary" onClick={() => onFilters({ action: '', business_id: '', actor_id: '', from: '', to: '' })}>Clear</button></div><table><thead><tr><th>Action</th><th>Business</th><th>Performed by</th><th>Date</th></tr></thead><tbody>{audit.data.map(log => <tr key={log.id}><td><strong>{log.action.replaceAll('.', ' ')}</strong></td><td>{log.business?.name || 'Platform'}</td><td>{log.actor?.name || 'Administrator'}</td><td>{new Date(log.created_at).toLocaleString()}</td></tr>)}{!audit.data.length && <tr><td colSpan="4" className="empty-row">No admin activity matches these filters.</td></tr>}</tbody></table><Pagination meta={audit} page={page} onPage={onPage}/></section>
+}
+
+function AdminOverviewCharts({ charts }) {
+  const monthly = charts?.monthly || []
+  const plans = charts?.plans || []
+  const maxBusiness = Math.max(1, ...monthly.map(item => item.businesses))
+  const maxRevenue = Math.max(1, ...monthly.map(item => item.revenue))
+  const maxPlans = Math.max(1, ...plans.map(item => item.businesses))
+  return <section className="overview-charts"><article className="panel"><div className="panel-head"><div><h2>Business growth</h2><p>New businesses during the last six months</p></div></div><div className="bar-chart">{monthly.map(item => <div key={item.label}><span style={{ height: `${Math.max(5, item.businesses / maxBusiness * 100)}%` }}/><strong>{item.businesses}</strong><small>{item.label}</small></div>)}</div></article><article className="panel"><div className="panel-head"><div><h2>Subscription revenue</h2><p>Paid subscription revenue by month</p></div></div><div className="bar-chart revenue-chart">{monthly.map(item => <div key={item.label}><span style={{ height: `${Math.max(5, item.revenue / maxRevenue * 100)}%` }}/><strong>{money(item.revenue)}</strong><small>{item.label}</small></div>)}</div></article><article className="panel plan-distribution"><div className="panel-head"><div><h2>Active businesses by plan</h2><p>Current subscription distribution</p></div></div><div>{plans.map(item => <div key={item.name}><label><span>{item.name}</span><strong>{item.businesses}</strong></label><i><b style={{ width: `${item.businesses / maxPlans * 100}%` }}/></i></div>)}</div></article></section>
+}
+
+function BusinessAuditHistory({ businessId }) {
+  const [filters, setFilters] = useState({ search: '', action: '', actor_id: '', from: '', to: '' })
+  const [page, setPage] = useState(1)
+  const [audit, setAudit] = useState({ data: [], last_page: 1, total: 0, filters: { actions: [], actors: [] } })
+  useEffect(() => {
+    const timer = window.setTimeout(() => api.get(`/admin/businesses/${businessId}/activity`, { params: { ...Object.fromEntries(Object.entries(filters).map(([key, value]) => [key, value || undefined])), page }, showLoader: false }).then(response => setAudit(response.data)).catch(() => {}), 200)
+    return () => window.clearTimeout(timer)
+  }, [businessId, filters, page])
+  const update = (key, value) => { setFilters(current => ({ ...current, [key]: value })); setPage(1) }
+  return <section className="panel full-detail-table"><div className="panel-head"><div><h2>Audit history</h2><p>Business-specific administrative, payment and onboarding changes</p></div><span className="status">{audit.total || 0} events</span></div><div className="audit-filters business-audit-filters"><label className="search-field"><Search size={16}/><input value={filters.search} onChange={event => update('search', event.target.value)} placeholder="Search audit history"/></label><label>Action<select value={filters.action} onChange={event => update('action', event.target.value)}><option value="">All actions</option>{(audit.filters?.actions || []).map(action => <option key={action} value={action}>{action.replaceAll('.', ' ')}</option>)}</select></label><label>Actor<select value={filters.actor_id} onChange={event => update('actor_id', event.target.value)}><option value="">All actors</option>{(audit.filters?.actors || []).map(actor => <option key={actor.id} value={actor.id}>{actor.name}</option>)}</select></label><label>From<input type="date" value={filters.from} onChange={event => update('from', event.target.value)}/></label><label>To<input type="date" value={filters.to} onChange={event => update('to', event.target.value)}/></label><button className="secondary" onClick={() => { setFilters({ search: '', action: '', actor_id: '', from: '', to: '' }); setPage(1) }}>Clear</button></div><table><thead><tr><th>Action</th><th>Performed by</th><th>Date</th></tr></thead><tbody>{audit.data.map(log => <tr key={log.id}><td>{log.action.replaceAll('.', ' ')}</td><td>{log.actor?.name || 'System / gateway'}</td><td>{new Date(log.created_at).toLocaleString()}</td></tr>)}{!audit.data.length && <tr><td colSpan="3" className="customer-empty">No audit entries match these filters.</td></tr>}</tbody></table><Pagination meta={audit} page={page} onPage={setPage}/></section>
 }
 
 function AdminBusinessDetail({ business, activePlans, cashPlan, cashCycle, cashAmount, onCashPlan, onCashCycle, onCash, onStatus }) {
@@ -392,7 +464,7 @@ function AdminBusinessDetail({ business, activePlans, cashPlan, cashCycle, cashA
     <section className="panel detail-summary"><div className="panel-head"><div><h2>Registration and profile</h2><p>Account identity, contact and onboarding state</p></div><div className="detail-head-actions"><button className="secondary" onClick={() => setShowCashPayment(true)}><Plus size={16}/>Record cash payment</button><select value={business.status || 'pending'} onChange={e => onStatus(business, e.target.value)}><option value="pending">Pending</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="rejected">Rejected</option></select></div></div><div className="business-facts detail-facts"><div><small>Business</small><strong>{business.name}</strong></div><div><small>Owner</small><strong>{business.owner?.name || 'Not available'}</strong></div><div><small>Email</small><strong>{business.owner?.email || 'Not available'}</strong></div><div><small>Phone</small><strong>{business.owner?.phone || 'Not available'}</strong></div><div><small>Email status</small><strong>{business.owner?.email_verified_at ? 'Verified' : 'Pending'}</strong></div><div><small>Profile</small><strong>{business.profile_completed ? 'Complete' : 'Incomplete'}</strong></div><div><small>Category</small><strong>{business.category || 'Not provided'}</strong></div><div><small>Address</small><strong>{[business.address, business.city, business.country].filter(Boolean).join(', ') || 'Not provided'}</strong></div><div><small>Customer portal</small><strong>/customer/{business.slug}</strong></div><div><small>Created</small><strong>{new Date(business.created_at).toLocaleString()}</strong></div></div></section>
     <section className="panel full-detail-table"><div className="panel-head"><div><h2>Subscription history</h2><p>Current, replaced, expired and cancelled plans</p></div></div><table><thead><tr><th>Plan</th><th>Billing</th><th>Amount</th><th>Starts</th><th>Expires</th><th>Status</th></tr></thead><tbody>{(business.subscriptions || []).map(subscription => <tr key={subscription.id}><td>{subscription.plan?.name || 'Archived plan'}</td><td className="capitalize">{subscription.billing_cycle}</td><td>{money(subscription.amount_paid)}</td><td>{new Date(subscription.starts_at).toLocaleDateString()}</td><td>{new Date(subscription.ends_at).toLocaleDateString()}</td><td><span className="status">{subscription.status}</span></td></tr>)}{!business.subscriptions?.length && <tr><td colSpan="6" className="customer-empty">No subscriptions.</td></tr>}</tbody></table></section>
     <section className="panel full-detail-table"><div className="panel-head"><div><h2>Payment history</h2><p>Online gateway and verified cash payments</p></div><span className="status">{filteredPaymentHistory.length} records</span></div><div className="detail-payment-filters"><label>Method<select value={historyMethod} onChange={e => { setHistoryMethod(e.target.value); setShowAllPayments(false) }}><option value="">All methods</option><option value="online">Online</option><option value="cash">Cash</option></select></label><label>Status<select value={historyStatus} onChange={e => { setHistoryStatus(e.target.value); setShowAllPayments(false) }}><option value="">All statuses</option><option value="paid">Paid</option><option value="processing">Processing</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="refunded">Refunded</option></select></label></div><table><thead><tr><th>Date</th><th>Plan</th><th>Method</th><th>Billing</th><th>Amount</th><th>Gateway reference</th><th>Status</th></tr></thead><tbody>{visiblePaymentHistory.map(payment => <tr key={payment.id}><td>{new Date(payment.payment_date || payment.created_at).toLocaleDateString()}</td><td>{payment.plan?.name || 'Archived plan'}</td><td className="capitalize">{payment.method === 'card' ? 'Safepay card' : payment.method}</td><td className="capitalize">{payment.billing_cycle}</td><td>{money(payment.amount)}</td><td>{payment.method === 'cash' ? '—' : payment.transaction_reference || 'Not available'}</td><td><span className={`status ${['failed', 'refunded'].includes(payment.status) ? 'disabled' : ['pending', 'processing'].includes(payment.status) ? 'pending' : ''}`}>{payment.status}</span></td></tr>)}{!visiblePaymentHistory.length && <tr><td colSpan="7" className="customer-empty">No payments match these filters.</td></tr>}</tbody></table>{filteredPaymentHistory.length > 20 && <div className="history-more"><button className="secondary" onClick={() => setShowAllPayments(value => !value)}>{showAllPayments ? 'Show latest 20' : `Show all ${filteredPaymentHistory.length}`}</button></div>}</section>
-    <section className="panel full-detail-table"><div className="panel-head"><div><h2>Audit history</h2><p>Administrative, payment and onboarding changes</p></div></div><table><thead><tr><th>Action</th><th>Performed by</th><th>Date</th></tr></thead><tbody>{(business.audit_logs || []).map(log => <tr key={log.id}><td>{log.action.replaceAll('.', ' ')}</td><td>{log.actor?.name || 'System / gateway'}</td><td>{new Date(log.created_at).toLocaleString()}</td></tr>)}{!business.audit_logs?.length && <tr><td colSpan="3" className="customer-empty">No audit entries.</td></tr>}</tbody></table></section>
+    <BusinessAuditHistory businessId={business.id}/>
     {showCashPayment && <div className="admin-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowCashPayment(false) }}><section className="admin-modal"><div className="panel-head"><div><h2>Record verified cash payment</h2><p>Payment and activation are saved atomically</p></div><button className="icon-button" title="Close" onClick={() => setShowCashPayment(false)}><X size={18}/></button></div><form className="cash-payment-form" onSubmit={async e => { if (await onCash(e, business)) setShowCashPayment(false) }}><label>Plan<select name="plan_id" required value={cashPlan?.id || ''} onChange={e => onCashPlan(e.target.value)}>{activePlans.map(plan => <option value={plan.id} key={plan.id}>{plan.name}</option>)}</select></label><label>Billing<select name="billing_cycle" value={cashCycle} onChange={e => onCashCycle(e.target.value)}><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label><label>Amount<input name="amount" type="number" value={cashAmount.toFixed(2)} readOnly/></label><label>Payment date<input name="payment_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)}/></label><label>Activation reason<input name="activation_reason" placeholder="Cash received and verified"/></label><label className="wide">Internal admin note<textarea name="admin_note" rows="2" placeholder="Visible only in the admin platform"/></label><button className="primary wide">Record payment and activate</button></form></section></div>}
   </div>
 }
@@ -431,9 +503,16 @@ function CustomerPortal({ slug }) {
   const [seconds, setSeconds] = useState(0)
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
-  const [portalView, setPortalView] = useState('dashboard')
+  const [portalView, setPortalView] = useState(() => hashView('dashboard'))
   const [profileFeedback, setProfileFeedback] = useState(null)
+  const [customerNotifications, setCustomerNotifications] = useState([])
+  const [notificationMeta, setNotificationMeta] = useState(null)
+  const [notificationPage, setNotificationPage] = useState(1)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
   const reloadDashboard = () => api.get(`/customer/${slug}/dashboard`).then(r => setDashboard(r.data))
+  const loadCustomerNotifications = useCallback((page = notificationPage) => api.get(`/customer/${slug}/notifications`, { params: { page }, showLoader: false }).then(r => { setCustomerNotifications(r.data.data || r.data); setNotificationMeta(r.data.meta || r.data); setUnreadCount(r.data.unread_count || 0) }).catch(() => {}), [slug, notificationPage])
+  useDismissable(showNotifications, () => setShowNotifications(false))
 
   useEffect(() => {
     let active = true
@@ -455,6 +534,13 @@ function CustomerPortal({ slug }) {
     const timer = window.setInterval(() => setSeconds(value => Math.max(0, value - 1)), 1000)
     return () => window.clearInterval(timer)
   }, [seconds])
+  useEffect(() => {
+    if (!dashboard) return undefined
+    loadCustomerNotifications()
+    const disconnect = connectNotifications(dashboard.customer.id, loadCustomerNotifications, 'customer', `/api/customer/${slug}/broadcasting/auth`)
+    const timer = window.setInterval(loadCustomerNotifications, 30000)
+    return () => { disconnect(); window.clearInterval(timer) }
+  }, [dashboard, slug, loadCustomerNotifications])
 
   const beginExpiry = expiresAt => setSeconds(Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000)))
   const switchAuthMode = mode => { setAuthMode(mode); setError(''); setCode('') }
@@ -484,11 +570,23 @@ function CustomerPortal({ slug }) {
   const loginCustomer = async e => {
     e.preventDefault(); setError('')
     const form = Object.fromEntries(new FormData(e.currentTarget))
+    form.remember = form.remember === 'on'
     try {
       await prepareCsrf()
       const { data } = await api.post(`/customer/${slug}/login`, form)
       setDashboard(data)
     } catch (err) { setError(err.response?.data?.message || 'Login failed.') }
+  }
+  const forgotCustomerPassword = async e => {
+    e.preventDefault(); setError('')
+    const email = new FormData(e.currentTarget).get('email')
+    try { const { data } = await api.post(`/customer/${slug}/forgot-password`, { email }); setPendingEmail(email); beginExpiry(data.expires_at); setAuthMode('reset') }
+    catch (err) { setError(err.response?.data?.message || 'Password reset code could not be sent.') }
+  }
+  const resetCustomerPassword = async e => {
+    e.preventDefault(); setError('')
+    try { await api.post(`/customer/${slug}/reset-password`, { ...Object.fromEntries(new FormData(e.currentTarget)), email: pendingEmail }); setAuthMode('login'); toast('Password updated. You can sign in now.', 'success') }
+    catch (err) { setError(err.response?.data?.message || Object.values(err.response?.data?.errors || {})[0]?.[0] || 'Password reset failed.') }
   }
   const logout = async () => { await api.post(`/customer/${slug}/logout`); setDashboard(null); setAuthMode('login'); setCode('') }
   const updateProfile = async e => {
@@ -501,11 +599,13 @@ function CustomerPortal({ slug }) {
   if (!dashboard) return <main className="customer-login" style={brandingStyle(business)}>
     <section className="customer-login-panel">
       <div className="customer-brand"><BrandLogo branding={business}/><div><small>REWARDS PORTAL</small><h1>{business?.brand_name || business?.name || 'Rewards'}</h1></div></div>
-      <div className="login-copy"><h2>{authMode === 'register' ? 'Create your rewards account' : authMode === 'verify' ? 'Verify your email' : 'Welcome back'}</h2><p>{authMode === 'verify' ? `Enter the code sent to ${pendingEmail}.` : `Access your ${business?.name || ''} points and purchase history.`}</p></div>
-      {authMode !== 'verify' && <div className="customer-auth-tabs"><button className={authMode === 'login' ? 'active' : ''} onClick={() => switchAuthMode('login')}>Sign in</button><button className={authMode === 'register' ? 'active' : ''} onClick={() => switchAuthMode('register')}>Register</button></div>}
+      <div className="login-copy"><h2>{authMode === 'register' ? 'Create your rewards account' : authMode === 'verify' ? 'Verify your email' : authMode === 'forgot' ? 'Reset your password' : authMode === 'reset' ? 'Choose a new password' : 'Welcome back'}</h2><p>{['verify', 'reset'].includes(authMode) ? `Enter the code sent to ${pendingEmail}.` : authMode === 'forgot' ? 'We will email you a secure 2-minute reset code.' : `Access your ${business?.name || ''} points and purchase history.`}</p></div>
+      {!['verify', 'forgot', 'reset'].includes(authMode) && <div className="customer-auth-tabs"><button className={authMode === 'login' ? 'active' : ''} onClick={() => switchAuthMode('login')}>Sign in</button><button className={authMode === 'register' ? 'active' : ''} onClick={() => switchAuthMode('register')}>Register</button></div>}
       {authMode === 'login' && <form onSubmit={loginCustomer} className="claim-form">
         <label>Mobile number<PhoneInput required/></label>
-        <label>Password<input name="password" type="password" required placeholder="Your password"/></label>
+        <label>Password<PasswordInput name="password" required placeholder="Your password"/></label>
+        <label className="check-label"><input name="remember" type="checkbox"/>Remember me for 30 days</label>
+        <button type="button" className="text-button" onClick={() => switchAuthMode('forgot')}>Forgot password?</button>
         {error && <div className="error">{error}</div>}
         <button className="customer-primary">Sign in</button>
       </form>}
@@ -513,8 +613,8 @@ function CustomerPortal({ slug }) {
         <label>Full name<input name="name" required placeholder="Your full name"/></label>
         <label>Email address<input name="email" type="email" required placeholder="you@example.com"/></label>
         <label>Mobile number<PhoneInput required/></label>
-        <label>Password<input name="password" type="password" minLength="8" required placeholder="At least 8 characters"/></label>
-        <label>Confirm password<input name="password_confirmation" type="password" minLength="8" required placeholder="Repeat your password"/></label>
+        <label>Password<PasswordInput name="password" minLength="8" required placeholder="At least 8 characters"/></label>
+        <label>Confirm password<PasswordInput name="password_confirmation" minLength="8" required placeholder="Repeat your password"/></label>
         {error && <div className="error">{error}</div>}
         <button className="customer-primary">Create account</button>
       </form>}
@@ -526,6 +626,8 @@ function CustomerPortal({ slug }) {
         <button type="button" className="text-button" onClick={resendRegistration} disabled={seconds > 0}>Resend code</button>
         <button type="button" className="text-button" onClick={() => switchAuthMode('register')}>Change details</button>
       </form>}
+      {authMode === 'forgot' && <form onSubmit={forgotCustomerPassword} className="claim-form"><label>Email address<input name="email" type="email" required placeholder="you@example.com"/></label>{error && <div className="error">{error}</div>}<button className="customer-primary">Send reset code</button><button type="button" className="text-button" onClick={() => switchAuthMode('login')}>Back to sign in</button></form>}
+      {authMode === 'reset' && <form onSubmit={resetCustomerPassword} className="claim-form"><label>Verification code<input name="code" inputMode="numeric" maxLength="6" required/></label><label>New password<PasswordInput name="password" minLength="8" required/></label><label>Confirm password<PasswordInput name="password_confirmation" minLength="8" required/></label><small className="code-expiry">{seconds ? `Expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'Code expired'}</small>{error && <div className="error">{error}</div>}<button className="customer-primary" disabled={!seconds}>Update password</button><button type="button" className="text-button" onClick={() => switchAuthMode('forgot')}>Request a new code</button></form>}
       <p className="privacy-note">This account is only for rewards issued by {business?.name || 'this business'}.</p>
     </section>
   </main>
@@ -548,7 +650,7 @@ function CustomerPortal({ slug }) {
       <div className="customer-sidebar-account"><span>{(dashboard.customer.name || dashboard.customer.phone).charAt(0).toUpperCase()}</span><div><strong>{dashboard.customer.name || 'Member'}</strong><small>{formatPhone(dashboard.customer.phone)}</small></div><button title="Sign out" onClick={logout}><LogOut size={17}/></button></div>
     </aside>
     <section className="customer-main">
-      <header className="customer-dashboard-header"><div><small>CUSTOMER AREA</small><h1>{customerItems.find(item => item[0] === portalView)?.[1]}</h1></div><div className="customer-header-actions">{dashboard.loyalty.memberships_enabled && dashboard.tier && <span className="tier-badge" style={{ background: dashboard.tier_details?.badge_color }}><TierIcon name={dashboard.tier} size={15}/>{dashboard.tier}</span>}<button className="customer-mobile-logout" title="Sign out" onClick={logout}><LogOut size={17}/></button></div></header>
+      <header className="customer-dashboard-header"><div><small>CUSTOMER AREA</small><h1>{customerItems.find(item => item[0] === portalView)?.[1] || 'Dashboard'}</h1></div><div className="customer-header-actions">{dashboard.loyalty.memberships_enabled && dashboard.tier && <span className="tier-badge" style={{ background: dashboard.tier_details?.badge_color }}><TierIcon name={dashboard.tier} size={15}/>{dashboard.tier}</span>}<div className="workspace-actions"><button className="customer-mobile-logout notification-button customer-bell" title="Notifications" aria-label={`Notifications, ${unreadCount} unread`} aria-expanded={showNotifications} onClick={() => setShowNotifications(value => !value)}><Bell size={18}/>{unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showNotifications && <div className="notification-menu"><div><strong>Notifications</strong><button onClick={async () => { await api.post(`/customer/${slug}/notifications/read`, {}, { showLoader: false }); loadCustomerNotifications() }}>Mark all read</button></div>{customerNotifications.slice(0, 6).map(item => <button className={`notification-entry${!item.read_at ? ' unread' : ''}`} key={item.id} onClick={async () => { if (!item.read_at) await api.post(`/customer/${slug}/notifications/${item.id}/read`, {}, { showLoader: false }); setPortalView('notifications'); setShowNotifications(false); loadCustomerNotifications() }}><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></button>)}<button className="notification-view-all" onClick={() => { setPortalView('notifications'); setShowNotifications(false) }}>View all notifications</button></div>}</div><button className="customer-mobile-logout" title="Sign out" onClick={logout}><LogOut size={17}/></button></div></header>
       <div className="customer-content">
       {portalView === 'dashboard' && <><div className="customer-welcome"><div><p>Welcome back</p><h2>{dashboard.customer.name || dashboard.customer.phone}</h2></div></div>{dashboard.loyalty.points_enabled && <section className="wallet compact-wallet">
         <small>AVAILABLE POINTS</small><strong>{dashboard.balance.toLocaleString()}</strong><p>Use your points on your next eligible purchase.</p>
@@ -570,7 +672,7 @@ function CustomerPortal({ slug }) {
       {portalView === 'membership' && <div className="membership-view"><section className="membership-card"><small>CURRENT MEMBERSHIP</small><TierIcon name={dashboard.tier} size={38}/><strong>{dashboard.tier || 'No level yet'}</strong><p>{dashboard.next_tier ? `${Math.max(0, dashboard.next_tier_at - dashboard.balance)} more points to reach ${dashboard.next_tier}.` : dashboard.tier ? 'You have reached the highest membership tier.' : 'Keep earning points to unlock your first membership level.'}</p></section><div className="customer-page-stack"><section className="customer-section membership-progress"><div className="customer-section-head"><h2>Tier progress</h2><span>{Math.round(progress)}%</span></div><div><div><strong>{dashboard.balance.toLocaleString()} points</strong><span>{dashboard.next_tier_at ? `${dashboard.next_tier_at.toLocaleString()} required` : 'Highest tier'}</span></div><progress value={progress} max="100"/></div></section><section className="customer-section"><div className="customer-section-head"><h2>Membership benefits</h2><span>{dashboard.tier_details?.benefits?.length || 0} benefits</span></div><div className="membership-benefits">{dashboard.tier_details?.benefits?.map(benefit => <p key={benefit}><BadgeCheck size={16}/>{benefit}</p>)}{!dashboard.tier_details?.benefits?.length && <div className="customer-empty">No benefits are configured for your current level.</div>}</div></section></div></div>}
       {portalView === 'wallet' && <div className="customer-page-stack"><section className="wallet wallet-summary"><small>POINTS BALANCE</small><strong>{dashboard.balance.toLocaleString()}</strong><p>Available rewards balance</p></section><section className="customer-section"><div className="customer-section-head"><h2>Wallet activity</h2><span>{dashboard.transactions.length} entries</span></div><PointsActivity limit={dashboard.transactions.length}/></section></div>}
       {portalView === 'transactions' && <section className="customer-section"><div className="customer-section-head"><h2>Purchase transactions</h2><span>{dashboard.orders.length} orders</span></div><Purchases limit={dashboard.orders.length}/></section>}
-      {portalView === 'notifications' && <section className="customer-section"><div className="customer-section-head"><h2>Reward notifications</h2><span>{dashboard.transactions.length} updates</span></div><div className="customer-notifications">{dashboard.transactions.map(tx => <article key={tx.id}><span><Bell size={16}/></span><div><strong>{tx.points >= 0 ? `${tx.points} points added` : `${Math.abs(tx.points)} points used`}</strong><p>{tx.description || 'Your rewards balance was updated.'}</p><small>{new Date(tx.created_at).toLocaleString()}</small></div></article>)}{!dashboard.transactions.length && <div className="customer-empty">You have no notifications yet.</div>}</div></section>}
+      {portalView === 'notifications' && <section className="customer-section"><div className="customer-section-head"><div><h2>All notifications</h2><p>Account, points and membership updates</p></div><button className="section-link" onClick={async () => { await api.post(`/customer/${slug}/notifications/read`, {}, { showLoader: false }); loadCustomerNotifications() }}>Mark all as read</button></div><div className="customer-notifications">{customerNotifications.map(item => <button className={`notification-entry${!item.read_at ? ' unread' : ''}`} key={item.id} onClick={async () => { if (!item.read_at) await api.post(`/customer/${slug}/notifications/${item.id}/read`, {}, { showLoader: false }); if (item.data.action_url && item.data.action_url !== `/customer/${slug}`) window.location.assign(item.data.action_url); loadCustomerNotifications() }}><span><Bell size={16}/></span><div><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></div></button>)}{!customerNotifications.length && <div className="customer-empty">You have no notifications yet.</div>}</div><Pagination meta={notificationMeta} page={notificationPage} onPage={page => { setNotificationPage(page); loadCustomerNotifications(page) }}/></section>}
       {portalView === 'profile' && <div className="profile-grid">
         <form className="customer-section profile-form" onSubmit={updateProfile}>
           <div className="customer-section-head"><h2>Personal details</h2><span>Customer #{dashboard.customer.id}</span></div>
@@ -578,6 +680,7 @@ function CustomerPortal({ slug }) {
             <button className="customer-primary">Save profile</button></div>
         </form>
         <section className="customer-section profile-phone"><div className="customer-section-head"><h2>Registered mobile</h2></div><div className="profile-fields"><p>Your account is secured against mobile number changes.</p><strong>{formatPhone(dashboard.customer.phone)}</strong>{profileFeedback && <div className={`${profileFeedback.type === 'error' ? 'error' : 'notice'} auth-notice`}>{profileFeedback.message}</div>}</div></section>
+        <SecurityForm endpoint={`/customer/${slug}/password`} className="customer-section security-form"/>
       </div>}
       </div>
     </section>
@@ -840,7 +943,6 @@ function LoyaltyManagement() {
     if (editingLevel) await api.put(`/business/loyalty/levels/${editingLevel.id}`, values); else await api.post('/business/loyalty/levels', values); setEditingLevel(null); setLevelName('Silver'); setBenefits(tierPresets.Silver); form.reset(); await load()
   }
   const steps = [['profile', 'Complete business profile'], ['loyalty', 'Enable loyalty program'], ['points_rule', 'Configure points rules'], ['membership_level', 'Create membership levels'], ['qr', 'Configure QR'], ['integration', 'Connect a website']]
-  const editLevel = level => { setEditingLevel(level); setLevelName(level.name); setBenefits(level.benefits?.length ? level.benefits : tierPresets[level.name]) }
   const selectLevel = name => { setLevelName(name); setBenefits(tierPresets[name]) }
   const locked = tab === 'rules' ? !data.settings.points_enabled : ['levels', 'rewards'].includes(tab) ? !data.settings.memberships_enabled : false
   const examples = Object.values(tierPresets).flat()
@@ -866,27 +968,32 @@ function LoyaltyManagement() {
 }
 
 function Shell({ user, onLogout }) {
-  const [view, setView] = useState('Overview')
+  const [view, setView] = useState(() => hashView('Overview'))
   const [revision, setRevision] = useState(0)
   const [subscription, setSubscription] = useState(null)
   const [notifications, setNotifications] = useState([])
+  const [notificationMeta, setNotificationMeta] = useState(null)
+  const [notificationPage, setNotificationPage] = useState(1)
+  const [unreadCount, setUnreadCount] = useState(0)
   const [branding, setBranding] = useState({ ...defaultBranding, brand_name: user.business.name })
   const [showNotifications, setShowNotifications] = useState(false)
   const loadSubscription = () => api.get('/subscription').then(r => setSubscription(r.data))
-  const loadNotifications = () => api.get('/notifications', { showLoader: false }).then(r => setNotifications(r.data)).catch(() => {})
+  const loadNotifications = (page = notificationPage) => api.get('/notifications', { params: { page }, showLoader: false }).then(r => { setNotifications(r.data.data || r.data); setNotificationMeta(r.data.meta || r.data); setUnreadCount(r.data.unread_count || 0) }).catch(() => {})
+  useDismissable(showNotifications, () => setShowNotifications(false))
   useEffect(() => { loadSubscription(); loadNotifications() }, [])
   useEffect(() => {
     if (subscription?.subscription && !subscription.profile_required && subscription.business?.profile_completed) {
       api.get('/business/branding', { showLoader: false }).then(r => setBranding({ ...r.data, loaded: true })).catch(() => setBranding(value => ({ ...value, loaded: true })))
     }
-  }, [subscription?.subscription?.id, subscription?.profile_required, subscription?.business?.profile_completed])
+  }, [subscription?.subscription, subscription?.profile_required, subscription?.business?.profile_completed])
   useEffect(() => connectRealtime(user.business.id, () => setRevision(value => value + 1)), [user.business.id])
+  useEffect(() => connectNotifications(user.id, loadNotifications), [user.id])
   if (!subscription) return <div className="loading full">Loading subscription...</div>
   if (!subscription.subscription) return <SubscriptionGate user={user} status={subscription} onLogout={onLogout}/>
   if (subscription.profile_required || !subscription.business?.profile_completed) return <BusinessProfileGate user={user} onComplete={loadSubscription} onLogout={onLogout}/>
   const items = [
     ['Overview', LayoutDashboard], ['POS', ReceiptText], ['QR codes', QrCode],
-    ['Integrations', Globe2], ['Customer Loyalty', BadgeCheck], ['Customers', Users], ['Analytics', BarChart3], ['Settings', Settings2],
+    ['Integrations', Globe2], ['Customer Loyalty', BadgeCheck], ['Customers', Users], ['Notifications', Bell], ['Settings', Settings2],
   ]
   return <div className="app-shell" style={brandingStyle(branding)}>
     <aside>
@@ -897,33 +1004,72 @@ function Shell({ user, onLogout }) {
       </div>
     </aside>
     <main className="workspace">
-      <header><div><h1>{view}</h1><p>{user.business.name} · {subscription.subscription.plan.name} plan</p></div><div className="workspace-actions"><button className="icon-button notification-button" title="Notifications" onClick={() => setShowNotifications(value => !value)}><Bell size={19}/>{notifications.some(item => !item.read_at) && <span/>}</button>{showNotifications && <div className="notification-menu"><div><strong>Notifications</strong><button onClick={async () => { await api.post('/notifications/read', {}, { showLoader: false }); await loadNotifications() }}>Mark all read</button></div>{notifications.map(item => <article className={!item.read_at ? 'unread' : ''} key={item.id}><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></article>)}{!notifications.length && <p className="customer-empty">No notifications yet.</p>}</div>}</div></header>
+      <header><div><h1>{view}</h1><p>{user.business.name} · {subscription.subscription.plan.name} plan</p></div><div className="workspace-actions"><button className="icon-button notification-button" title="Notifications" aria-label={`Notifications, ${unreadCount} unread`} aria-expanded={showNotifications} onClick={() => setShowNotifications(value => !value)}><Bell size={19}/>{unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showNotifications && <div className="notification-menu"><div><strong>Notifications</strong><button onClick={async () => { await api.post('/notifications/read', {}, { showLoader: false }); await loadNotifications() }}>Mark all read</button></div>{notifications.slice(0, 6).map(item => <button className={`notification-entry${!item.read_at ? ' unread' : ''}`} key={item.id} onClick={async () => { if (!item.read_at) await api.post(`/notifications/${item.id}/read`, {}, { showLoader: false }); setShowNotifications(false); if (item.data.action_url) window.location.assign(item.data.action_url); else setView('Notifications'); loadNotifications() }}><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></button>)}{!notifications.length && <p className="customer-empty">No notifications yet.</p>}<button className="notification-view-all" onClick={() => { setView('Notifications'); setShowNotifications(false) }}>View all notifications</button></div>}</div></header>
       {view === 'Overview' && <Overview revision={revision} customerUrl={subscription.customer_portal_url} />}
       {view === 'POS' && <Pos />}
       {view === 'QR codes' && <QRCodes />}
       {view === 'Integrations' && <Integrations plan={subscription.subscription.plan} />}
       {view === 'Customer Loyalty' && <LoyaltyManagement />}
-      {['Customers', 'Analytics'].includes(view) && <Empty title={view} />}
-      {view === 'Settings' && <BrandingSettings branding={branding} onSaved={data => setBranding({ ...data, loaded: true })} />}
+      {view === 'Customers' && <Customers />}
+      {view === 'Notifications' && <section className="panel notification-page"><div className="panel-head"><div><h2>All notifications</h2><p>Updates for your workspace, newest first</p></div><button className="secondary" onClick={async () => { await api.post('/notifications/read', {}, { showLoader: false }); loadNotifications() }}>Mark all as read</button></div><div>{notifications.map(item => <button key={item.id} className={`notification-entry${!item.read_at ? ' unread' : ''}`} onClick={async () => { if (!item.read_at) await api.post(`/notifications/${item.id}/read`, {}, { showLoader: false }); if (item.data.action_url) window.location.assign(item.data.action_url); loadNotifications() }}><span><Bell size={18}/></span><div><strong>{item.data.title}</strong><p>{item.data.message}</p><small>{new Date(item.created_at).toLocaleString()}</small></div></button>)}{!notifications.length && <div className="customer-empty">No notifications yet.</div>}</div><Pagination meta={notificationMeta} page={notificationPage} onPage={page => { setNotificationPage(page); loadNotifications(page) }}/></section>}
+      {view === 'Settings' && <div className="settings-stack"><BrandingSettings branding={branding} onSaved={data => setBranding({ ...data, loaded: true })}/><SecurityForm /></div>}
     </main>
   </div>
 }
 
+function BusinessOverviewCharts({ charts }) {
+  const monthly = charts?.monthly || []
+  const maxRevenue = Math.max(1, ...monthly.map(item => item.revenue))
+  const maxOrders = Math.max(1, ...monthly.map(item => item.orders))
+  const maxCustomers = Math.max(1, ...monthly.map(item => item.customers))
+  return <section className="business-overview-charts"><article className="panel"><div className="panel-head"><div><h2>Revenue trend</h2><p>Paid customer-order revenue for the last six months</p></div></div><div className="bar-chart revenue-chart">{monthly.map(item => <div key={item.label}><span style={{ height: `${Math.max(5, item.revenue / maxRevenue * 100)}%` }}/><strong>{money(item.revenue)}</strong><small>{item.label}</small></div>)}</div></article><article className="panel"><div className="panel-head"><div><h2>Orders and customer growth</h2><p>Paid orders and newly registered customers</p></div></div><div className="dual-trend-chart"><div className="chart-legend"><span><i className="orders"/>Paid orders</span><span><i className="customers"/>New customers</span></div><div>{monthly.map(item => <div key={item.label}><section><i className="orders" style={{ height: `${Math.max(5, item.orders / maxOrders * 100)}%` }}/><i className="customers" style={{ height: `${Math.max(5, item.customers / maxCustomers * 100)}%` }}/></section><strong>{item.orders} / {item.customers}</strong><small>{item.label}</small></div>)}</div></div></article></section>
+}
+
 function Overview({ revision, customerUrl }) {
   const [data, setData] = useState(null)
+  const [orderSearch, setOrderSearch] = useState('')
+  const [showPortalQr, setShowPortalQr] = useState(false)
+  const portalQrRef = useRef(null)
   useEffect(() => { api.get('/dashboard').then(r => setData(r.data)) }, [revision])
   if (!data) return <div className="loading">Loading workspace...</div>
   const cards = [
     ['Revenue', money(data.metrics.revenue)], ['Paid orders', data.metrics.orders],
-    ['Customers', data.metrics.customers], ['Points issued', data.metrics.points_issued],
+    ['Customers', data.metrics.customers], ['Memberships', data.metrics.memberships],
   ]
+  const shareText = `Open our customer rewards portal: ${customerUrl}`
+  const downloadQr = () => {
+    const svg = portalQrRef.current?.querySelector('svg')
+    if (!svg) return
+    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a'); link.href = url; link.download = 'customer-rewards-portal-qr.svg'; link.click()
+    URL.revokeObjectURL(url)
+  }
+  const nativeShare = async () => {
+    if (navigator.share) await navigator.share({ title: 'Customer rewards portal', text: shareText, url: customerUrl })
+    else { await navigator.clipboard.writeText(customerUrl); toast('Portal link copied.', 'success') }
+  }
+  const recentOrders = data.recent_orders.filter(order => [order.external_id, order.customer?.name, order.customer?.phone, order.source, order.status].filter(Boolean).join(' ').toLowerCase().includes(orderSearch.toLowerCase()))
   return <><section className="metrics">{cards.map(([k, v]) => <article key={k}><small>{k}</small><strong>{v}</strong></article>)}</section>
-    <section className="portal-share"><div><Globe2 size={20}/><div><strong>Customer rewards portal</strong><small>Share this link in receipts, SMS, email or a QR code so customers can check points.</small></div></div><code>{customerUrl}</code><button className="secondary" onClick={() => navigator.clipboard.writeText(customerUrl)}>Copy link</button></section>
-    <section className="panel"><div className="panel-head"><div><h2>Recent orders</h2><p>Latest activity across connected sales channels</p></div></div>
+    <BusinessOverviewCharts charts={data.charts}/>
+    <section className="portal-share"><div><Globe2 size={20}/><div><strong>Customer rewards portal</strong><small>Generate a QR code or share this public link with customers.</small></div></div><code>{customerUrl}</code><div className="portal-share-actions"><button className="secondary" onClick={async () => { await navigator.clipboard.writeText(customerUrl); toast('Portal link copied.', 'success') }}>Copy link</button><button className="primary" onClick={() => setShowPortalQr(value => !value)}><QrCode size={16}/>{showPortalQr ? 'Hide QR' : 'Generate QR'}</button></div></section>
+    {showPortalQr && <section className="panel portal-qr-panel"><div ref={portalQrRef} className="portal-qr-code"><QRCodeSVG value={customerUrl} size={190} level="H" includeMargin/><small>Scanning opens</small><strong>{customerUrl}</strong></div><div className="portal-qr-copy"><h2>Share customer rewards portal</h2><p>Customers who scan this QR code will open the rewards portal directly.</p><div><button className="secondary" onClick={downloadQr}>Download QR</button><button className="secondary" onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')}>WhatsApp</button><button className="secondary" onClick={() => window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent('Customer rewards portal')}&body=${encodeURIComponent(shareText)}`, '_blank', 'noopener,noreferrer')}>Gmail</button><button className="primary" onClick={nativeShare}>Share</button></div></div></section>}
+    <section className="panel"><div className="panel-head"><div><h2>Recent orders</h2><p>Latest activity across connected sales channels</p></div></div><div className="table-toolbar"><label className="search-field"><Search size={16}/><input value={orderSearch} onChange={event => setOrderSearch(event.target.value)} placeholder="Search recent orders" aria-label="Search recent orders"/></label></div>
       <table><thead><tr><th>Order</th><th>Customer</th><th>Source</th><th>Status</th><th className="right">Total</th></tr></thead>
-        <tbody>{data.recent_orders.map(o => <tr key={o.id}><td>{o.external_id}</td><td>{o.customer?.name || o.customer?.phone || 'Walk-in'}</td><td>{o.source}</td><td><span className="status">{o.status}</span></td><td className="right">{money(o.total)}</td></tr>)}
-        {!data.recent_orders.length && <tr><td colSpan="5" className="empty-row">No orders yet. Create the first sale from POS.</td></tr>}</tbody></table>
+        <tbody>{recentOrders.map(o => <tr key={o.id}><td>{o.external_id}</td><td>{o.customer?.name || o.customer?.phone || 'Walk-in'}</td><td>{o.source}</td><td><span className="status">{o.status}</span></td><td className="right">{money(o.total)}</td></tr>)}
+        {!recentOrders.length && <tr><td colSpan="5" className="empty-row">No recent orders match your search.</td></tr>}</tbody></table>
     </section></>
+}
+
+function Customers() {
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [result, setResult] = useState(null)
+  useEffect(() => {
+    const timer = window.setTimeout(() => api.get('/business/customers', { params: { search: search || undefined, page }, showLoader: false }).then(r => setResult(r.data)), 250)
+    return () => window.clearTimeout(timer)
+  }, [search, page])
+  return <section className="panel customer-directory"><div className="panel-head"><div><h2>Customers</h2><p>Search customer profiles, balances and memberships</p></div><span className="status">{result?.total || 0} customers</span></div><div className="table-toolbar"><label className="search-field"><Search size={16}/><input value={search} onChange={event => { setSearch(event.target.value); setPage(1) }} placeholder="Search name, email or mobile" aria-label="Search customers"/></label></div><table><thead><tr><th>Customer</th><th>Mobile</th><th>Membership</th><th>Orders</th><th className="right">Points</th></tr></thead><tbody>{(result?.data || []).map(customer => <tr key={customer.id}><td><strong>{customer.name || 'Unnamed customer'}</strong><small className="table-sub">{customer.email || 'No email'}</small></td><td>{customer.phone}</td><td><span className="status">{customer.current_membership?.level?.name || 'Member'}</span></td><td>{customer.orders_count}</td><td className="right">{Number(customer.points_balance || 0).toLocaleString()}</td></tr>)}{result && !result.data.length && <tr><td colSpan="5" className="empty-row">No customers match your search.</td></tr>}</tbody></table><Pagination meta={result} page={page} onPage={setPage}/></section>
 }
 
 function Pos() {
@@ -983,8 +1129,6 @@ function Integrations({ plan }) {
     </section>
   </div>
 }
-
-function Empty({ title }) { return <section className="panel empty-state"><h2>{title}</h2><p>This view will populate as transactions and customer activity arrive.</p></section> }
 
 export default function App() {
   const claimToken = window.location.pathname.match(/^\/claim\/([^/]+)$/)?.[1]

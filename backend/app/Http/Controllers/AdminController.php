@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\ReconcileSafepayPayment;
 use App\Services\SubscriptionManager;
+use App\Services\NotificationService;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
@@ -41,7 +43,9 @@ class AdminController extends Controller
                 'active_businesses' => Business::where('status', 'active')->count(),
                 'customers' => Customer::count(),
                 'orders' => Order::count(),
-                'revenue_processed' => (float) Order::where('status', 'paid')->sum('total'),
+                'subscription_revenue' => (float) PaymentSubmission::where('status', 'paid')->sum('amount'),
+                'active_subscriptions' => \App\Models\Subscription::where('status', 'active')->where('ends_at', '>', now())->count(),
+                'pending_payments' => PaymentSubmission::where('status', 'pending')->count(),
             ],
             'businesses' => Business::with([
                 'owner:id,business_id,name,email,phone,email_verified_at',
@@ -60,8 +64,53 @@ class AdminController extends Controller
                 'paid_count' => PaymentSubmission::where('status', 'paid')->count(),
                 'card_total' => (float) PaymentSubmission::where('status', 'paid')->where('method', 'card')->sum('amount'),
             ],
-            'audit_logs' => AuditLog::with(['actor:id,name', 'business:id,name'])->latest('id')->limit(100)->get(),
+            'charts' => $this->chartData(),
         ];
+    }
+
+    public function updateProfile(Request $request, AuditLogger $audit)
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'email', 'max:150', Rule::unique('users', 'email')->ignore($user->id)],
+            'admin_brand_name' => ['required', 'string', 'max:80'],
+            'admin_brand_subtitle' => ['required', 'string', 'max:80'],
+            'current_password' => ['nullable', 'string'],
+        ]);
+        if ($data['email'] !== $user->email) {
+            abort_unless(Hash::check($data['current_password'] ?? '', $user->password), 422, 'Current password is required to change the email address.');
+        }
+        $old = $user->only(['name', 'email', 'admin_brand_name', 'admin_brand_subtitle']);
+        unset($data['current_password']);
+        $user->update($data);
+        $audit->log('admin.profile_updated', $user, $old, $user->fresh()->only(array_keys($data)), null, $request);
+
+        return $user->fresh();
+    }
+
+    public function activity(Request $request)
+    {
+        $filters = $this->auditFilters($request);
+        $base = AuditLog::query()->whereHas('actor', fn ($query) => $query->where('role', 'super_admin'));
+
+        return $this->filteredAuditResponse($base, $filters);
+    }
+
+    public function businessActivity(Request $request, Business $business)
+    {
+        $filters = $this->auditFilters($request);
+        $logs = $this->applyAuditFilters(AuditLog::query()->where('business_id', $business->id), $filters)
+            ->with(['actor:id,name,role', 'business:id,name'])->latest('id')->get()
+            ->unique(fn ($log) => implode('|', [$log->action, $log->actor_id, json_encode($log->old_values), json_encode($log->new_values)]))
+            ->values();
+        $page = max(1, (int) ($filters['page'] ?? 1));
+        $paginator = new LengthAwarePaginator($logs->forPage($page, 20)->values(), $logs->count(), 20, $page);
+
+        return response()->json([
+            ...$paginator->toArray(),
+            'filters' => $this->auditFilterOptions(AuditLog::query()->where('business_id', $business->id)),
+        ]);
     }
 
     public function createBusiness(Request $request, AuditLogger $audit)
@@ -126,7 +175,7 @@ class AdminController extends Controller
             ->latest()->paginate(50);
     }
 
-    public function updateBusiness(Request $request, Business $business, AuditLogger $audit)
+    public function updateBusiness(Request $request, Business $business, AuditLogger $audit, NotificationService $notifications)
     {
         $data = $request->validate([
             'status' => ['required', Rule::in(['pending', 'active', 'suspended', 'expired', 'rejected'])],
@@ -137,6 +186,10 @@ class AdminController extends Controller
         $audit->log('business.status_changed', $business, $old, [
             ...$business->only(['status', 'active']), 'reason' => $data['reason'] ?? null,
         ], $business->id, $request);
+        if ($owner = $business->owner()->first()) {
+            $type = $data['status'] === 'active' ? 'business_reactivated' : "business_{$data['status']}";
+            $notifications->send($owner, $type, $data['status'] === 'active' ? 'Business reactivated' : 'Business status updated', "{$business->name} is now {$data['status']}.", '/#Overview', "business:{$business->id}:status:{$data['status']}:{$business->updated_at->timestamp}");
+        }
 
         return $business->fresh()->load('plan');
     }
@@ -149,10 +202,74 @@ class AdminController extends Controller
             'subscriptions' => fn ($query) => $query->with(['plan' => fn ($plan) => $plan->withTrashed()])->latest('starts_at'),
             'payments' => fn ($query) => $query->whereNotIn('status', ['initiated', 'abandoned'])
                 ->with(['plan' => fn ($plan) => $plan->withTrashed()])->latest(),
-        ])->loadCount(['customers', 'orders'])->setRelation(
-            'auditLogs',
-            AuditLog::with('actor:id,name')->where('business_id', $business->id)->latest('id')->get(),
-        );
+        ])->loadCount(['customers', 'orders']);
+    }
+
+    private function auditFilters(Request $request): array
+    {
+        return $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'action' => ['nullable', 'string', 'max:100'],
+            'business_id' => ['nullable', 'integer', 'exists:businesses,id'],
+            'actor_id' => ['nullable', 'integer', 'exists:users,id'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'page' => ['nullable', 'integer', 'min:1'],
+        ]);
+    }
+
+    private function filteredAuditResponse($base, array $filters)
+    {
+        $optionsBase = clone $base;
+        $logs = $this->applyAuditFilters($base, $filters)
+            ->with(['actor:id,name,role', 'business:id,name'])->latest('id')->paginate(20);
+
+        return response()->json([...$logs->toArray(), 'filters' => $this->auditFilterOptions($optionsBase)]);
+    }
+
+    private function applyAuditFilters($query, array $filters)
+    {
+        return $query
+            ->when($filters['search'] ?? null, function ($query, string $search) {
+                $term = '%'.strtolower($search).'%';
+                $query->where(function ($nested) use ($term) {
+                    $nested->whereRaw('LOWER(action) LIKE ?', [$term])
+                        ->orWhereHas('business', fn ($business) => $business->whereRaw('LOWER(name) LIKE ?', [$term]))
+                        ->orWhereHas('actor', fn ($actor) => $actor->whereRaw('LOWER(name) LIKE ?', [$term]));
+                });
+            })
+            ->when($filters['action'] ?? null, fn ($query, $action) => $query->where('action', $action))
+            ->when($filters['business_id'] ?? null, fn ($query, $id) => $query->where('business_id', $id))
+            ->when($filters['actor_id'] ?? null, fn ($query, $id) => $query->where('actor_id', $id))
+            ->when($filters['from'] ?? null, fn ($query, $date) => $query->whereDate('created_at', '>=', $date))
+            ->when($filters['to'] ?? null, fn ($query, $date) => $query->whereDate('created_at', '<=', $date));
+    }
+
+    private function auditFilterOptions($query): array
+    {
+        $actionIds = (clone $query)->whereNotNull('action')->distinct()->orderBy('action')->pluck('action');
+        $businessIds = (clone $query)->whereNotNull('business_id')->distinct()->pluck('business_id');
+        $actorIds = (clone $query)->whereNotNull('actor_id')->distinct()->pluck('actor_id');
+
+        return [
+            'actions' => $actionIds,
+            'businesses' => Business::whereIn('id', $businessIds)->orderBy('name')->get(['id', 'name']),
+            'actors' => User::whereIn('id', $actorIds)->orderBy('name')->get(['id', 'name']),
+        ];
+    }
+
+    private function chartData(): array
+    {
+        $months = collect(range(5, 0))->map(fn ($offset) => now()->startOfMonth()->subMonths($offset));
+        return [
+            'monthly' => $months->map(fn ($month) => [
+                'label' => $month->format('M Y'),
+                'businesses' => Business::whereBetween('created_at', [$month, $month->copy()->endOfMonth()])->count(),
+                'revenue' => (float) PaymentSubmission::where('status', 'paid')->whereBetween('payment_date', [$month, $month->copy()->endOfMonth()])->sum('amount'),
+            ])->values(),
+            'plans' => Plan::withTrashed()->withCount(['businesses' => fn ($query) => $query->where('status', 'active')])
+                ->orderBy('display_order')->get(['id', 'name'])->map(fn ($plan) => ['name' => $plan->name, 'businesses' => $plan->businesses_count])->values(),
+        ];
     }
 
     public function storePlan(Request $request, AuditLogger $audit)

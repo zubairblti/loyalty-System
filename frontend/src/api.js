@@ -71,9 +71,9 @@ api.interceptors.response.use(response => {
   return Promise.reject(error)
 })
 
-export async function login(email, password) {
+export async function login(email, password, remember = false) {
   await prepareCsrf()
-  return (await api.post('/login', { email, password })).data
+  return (await api.post('/login', { email, password, remember })).data
 }
 
 export async function prepareCsrf() {

@@ -112,13 +112,16 @@ class LoyaltyService
 
     private function assign(Customer $customer, MembershipLevel $level, string $reason): CustomerMembership
     {
-        return CustomerMembership::create([
+        $membership = CustomerMembership::create([
             'business_id' => $customer->business_id,
             'customer_id' => $customer->id,
             'membership_level_id' => $level->id,
             'assigned_at' => now(),
             'assignment_reason' => $reason,
         ])->load('level');
+        $this->notifyMembership($customer, $level, 'Membership unlocked', "You reached {$level->name}. New rewards are now available.", $membership->id);
+
+        return $membership;
     }
 
     private function replace(CustomerMembership $current, MembershipLevel $level, string $reason): CustomerMembership
@@ -126,13 +129,35 @@ class LoyaltyService
         $customer = $current->customer;
         $current->update(['ended_at' => now(), 'end_reason' => $reason, 'grace_expires_at' => null]);
 
-        return $this->assign($customer, $level, $reason);
+        $membership = CustomerMembership::create([
+            'business_id' => $customer->business_id,
+            'customer_id' => $customer->id,
+            'membership_level_id' => $level->id,
+            'assigned_at' => now(),
+            'assignment_reason' => $reason,
+        ])->load('level');
+        $upgraded = $level->required_points > $current->level->required_points;
+        $this->notifyMembership($customer, $level, $upgraded ? 'Membership upgraded' : 'Membership updated', "Your membership is now {$level->name}.", $membership->id);
+
+        return $membership;
     }
 
     private function end(CustomerMembership $current, string $reason): ?CustomerMembership
     {
         $current->update(['ended_at' => now(), 'end_reason' => $reason, 'grace_expires_at' => null]);
+        $customer = $current->customer;
+        app(NotificationService::class)->send($customer, 'membership_updated', 'Membership updated', 'Your previous membership level has ended.', "/customer/{$customer->business->slug}#membership", "membership:{$current->id}:ended");
 
         return null;
+    }
+
+    private function notifyMembership(Customer $customer, MembershipLevel $level, string $title, string $message, int $membershipId): void
+    {
+        $notifications = app(NotificationService::class);
+        $business = $customer->business;
+        $notifications->send($customer, 'membership_updated', $title, $message, "/customer/{$business->slug}#membership", "membership:{$membershipId}:customer");
+        if ($owner = $business->owner) {
+            $notifications->send($owner, 'customer_membership_updated', 'Customer membership updated', ($customer->name ?: $customer->phone)." is now {$level->name}.", '/#Customer%20Loyalty', "membership:{$membershipId}:business");
+        }
     }
 }

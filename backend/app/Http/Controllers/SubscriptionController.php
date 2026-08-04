@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Business;
 use App\Models\PaymentSubmission;
 use App\Models\Plan;
+use App\Models\User;
+use App\Services\NotificationService;
 use App\Services\ReconcileSafepayPayment;
 use App\Services\SafepayClient;
 use Illuminate\Http\Request;
@@ -41,7 +43,7 @@ class SubscriptionController extends Controller
         ];
     }
 
-    public function submitPayment(Request $request)
+    public function submitPayment(Request $request, NotificationService $notifications)
     {
         $data = $request->validate([
             'plan_id' => ['required', 'integer', 'exists:plans,id'],
@@ -57,13 +59,18 @@ class SubscriptionController extends Controller
             : $plan->monthly_price;
         $path = $request->file('receipt')?->store('payment-receipts', 'local');
 
-        return PaymentSubmission::create([
+        $payment = PaymentSubmission::create([
             ...$data,
             'business_id' => $request->user()->business_id,
             'amount' => $amount,
             'receipt_path' => $path,
             'status' => 'pending',
         ]);
+        User::where('role', 'super_admin')->each(fn (User $admin) => $notifications->send(
+            $admin, 'payment_submitted', 'Payment submitted', "{$request->user()->business->name} submitted a {$data['method']} payment of PKR ".number_format((float) $amount, 0).'.', '/admin', "payment:{$payment->id}:submitted",
+        ));
+
+        return $payment;
     }
 
     public function createSafepayCheckout(Request $request, SafepayClient $safepay)

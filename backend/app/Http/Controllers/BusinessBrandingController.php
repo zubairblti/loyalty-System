@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class BusinessBrandingController extends Controller
 {
@@ -22,6 +23,9 @@ class BusinessBrandingController extends Controller
             'brand_text_color' => ['required', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
         ]);
+        if ($this->contrastRatio($data['brand_primary_color'], $data['brand_text_color']) < 4.5) {
+            throw ValidationException::withMessages(['brand_text_color' => 'Brand text and primary colors must meet WCAG AA contrast (4.5:1).']);
+        }
         $business = $request->user()->business;
         $old = $business->only(['brand_name', 'brand_primary_color', 'brand_accent_color', 'brand_text_color']);
         $update = [
@@ -83,5 +87,18 @@ class BusinessBrandingController extends Controller
             'brand_text_color' => $business->brand_text_color ?: '#ffffff',
             'logo_url' => $business->brand_logo_path ? '/api/business/branding/logo?v='.rawurlencode(basename($business->brand_logo_path)) : null,
         ];
+    }
+
+    private function contrastRatio(string $first, string $second): float
+    {
+        $luminance = function (string $hex): float {
+            $channels = array_map(fn ($offset) => hexdec(substr($hex, $offset, 2)) / 255, [1, 3, 5]);
+            $channels = array_map(fn ($value) => $value <= 0.04045 ? $value / 12.92 : (($value + 0.055) / 1.055) ** 2.4, $channels);
+
+            return 0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2];
+        };
+        [$lighter, $darker] = [max($luminance($first), $luminance($second)), min($luminance($first), $luminance($second))];
+
+        return ($lighter + 0.05) / ($darker + 0.05);
     }
 }

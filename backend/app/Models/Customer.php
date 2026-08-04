@@ -4,14 +4,15 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Notifications\Notifiable;
 
 class Customer extends Model
 {
-    use BelongsToTenant;
+    use BelongsToTenant, Notifiable;
 
     protected $guarded = [];
 
-    protected $hidden = ['password'];
+    protected $hidden = ['password', 'remember_token'];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
@@ -36,5 +37,10 @@ class Customer extends Model
     public function currentMembership()
     {
         return $this->hasOne(CustomerMembership::class)->whereNull('ended_at');
+    }
+
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
     }
 }

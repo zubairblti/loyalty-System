@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PosTerminal;
 use App\Support\PhoneNumber;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -28,7 +29,7 @@ class PosController extends Controller
         return response()->json(['terminal' => $terminal, 'secret' => $secret], 201);
     }
 
-    public function sale(Request $request)
+    public function sale(Request $request, NotificationService $notifications)
     {
         $data = $request->validate([
             'terminal_id' => ['required', 'integer'], 'total' => ['required', 'numeric', 'min:1'],
@@ -42,6 +43,9 @@ class PosController extends Controller
             ['business_id' => $businessId, 'phone' => $phone],
             ['name' => $data['customer_name'] ?? null],
         );
+        if ($customer?->wasRecentlyCreated && $owner = $request->user()->business->owner) {
+            $notifications->send($owner, 'customer_registered', 'New customer added', ($customer->name ?: $customer->phone).' was added from POS.', '/#Customers', "customer:{$customer->id}:created");
+        }
         $order = Order::create([
             'business_id' => $businessId, 'customer_id' => $customer?->id, 'pos_terminal_id' => $terminal->id,
             'source' => 'mini_pos', 'external_id' => 'POS-'.Str::upper(Str::random(10)), 'total' => $data['total'],

@@ -26,7 +26,7 @@ class BusinessActivatedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail'];
     }
 
     public function toMail(object $notifiable): MailMessage
@@ -48,6 +48,7 @@ class BusinessActivatedNotification extends Notification implements ShouldQueue
             'business_id' => $this->business->id,
             'title' => 'Workspace activated',
             'message' => "{$this->subscription->plan->name} is active until {$this->subscription->ends_at->format('d M Y')}.",
+            'action_url' => '/',
             'subscription_id' => $this->subscription->id,
             'payment_id' => $this->payment->id,
         ];

@@ -30,7 +30,7 @@ class BusinessBrandingTest extends TestCase
             'brand_name' => 'Brand Store Rewards',
             'brand_primary_color' => '#123456',
             'brand_accent_color' => '#fedcba',
-            'brand_text_color' => '#112233',
+            'brand_text_color' => '#ffffff',
             'logo' => UploadedFile::fake()->image('logo.png', 240, 240),
         ], ['Accept' => 'application/json']);
 
@@ -42,7 +42,7 @@ class BusinessBrandingTest extends TestCase
         $this->get("/api/customer/{$business->slug}/logo")->assertOk();
         $this->getJson("/api/customer/{$business->slug}/business")
             ->assertJsonPath('brand_primary_color', '#123456')
-            ->assertJsonPath('brand_text_color', '#112233')
+            ->assertJsonPath('brand_text_color', '#ffffff')
             ->assertJsonPath('brand_name', 'Brand Store Rewards');
 
         $oldPath = $business->brand_logo_path;
@@ -65,6 +65,18 @@ class BusinessBrandingTest extends TestCase
             'brand_accent_color' => '#ffffff',
             'brand_text_color' => '#ffffff',
         ])->assertUnprocessable()->assertJsonValidationErrors('brand_primary_color');
+    }
+
+    public function test_branding_rejects_inaccessible_text_contrast(): void
+    {
+        [$owner] = $this->activeBusiness();
+
+        $this->actingAs($owner)->postJson('/api/business/branding', [
+            'brand_name' => 'Low Contrast Brand',
+            'brand_primary_color' => '#ffffff',
+            'brand_accent_color' => '#16805a',
+            'brand_text_color' => '#eeeeee',
+        ])->assertUnprocessable()->assertJsonValidationErrors('brand_text_color');
     }
 
     private function activeBusiness(): array

@@ -7,6 +7,7 @@ use App\Services\Sms\LogSmsSender;
 use App\Services\Sms\TwilioSmsSender;
 use App\Tenancy\TenantContext;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Auth;
 use InvalidArgumentException;
 
 class AppServiceProvider extends ServiceProvider
@@ -31,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Auth::guard('web')->setRememberDuration(43200);
         //
     }
 }

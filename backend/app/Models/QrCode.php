@@ -16,4 +16,9 @@ class QrCode extends Model
     protected $guarded = [];
 
     protected $casts = ['expires_at' => 'datetime', 'claimed_at' => 'datetime'];
+
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
+    }
 }

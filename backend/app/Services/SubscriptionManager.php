@@ -65,6 +65,13 @@ class SubscriptionManager
             $this->audit->log('business.activated', $business, $old, $business->only(['plan_id', 'status', 'active']), $business->id, $request);
             $owner = $business->owner()->first();
             $owner?->notify(new BusinessActivatedNotification($business, $subscription->load('plan'), $payment));
+            $notifier = app(NotificationService::class);
+            if ($owner) {
+                $notifier->send($owner, 'subscription_activated', 'Workspace activated', "{$subscription->plan->name} is active until {$subscription->ends_at->format('d M Y')}.", '/#Overview', "subscription:{$subscription->id}:activated");
+            }
+            User::where('role', 'super_admin')->each(fn (User $admin) => $notifier->send(
+                $admin, 'payment_approved', 'Payment approved', "{$business->name} payment of PKR ".number_format((float) $payment->amount, 0).' was approved and its subscription activated.', '/admin#Payments', "payment:{$payment->id}:approved",
+            ));
 
             return $subscription;
         });
