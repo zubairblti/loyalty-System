@@ -6,7 +6,7 @@ use App\Contracts\SmsSender;
 use App\Mail\VerificationCodeMail;
 use App\Models\Business;
 use App\Models\Customer;
-use App\Models\CustomerOtp;
+use App\Models\LoyaltySetting;
 use App\Models\VerificationCode;
 use App\Services\LoyaltyService;
 use App\Support\PhoneNumber;
@@ -169,19 +169,22 @@ class CustomerPortalController extends Controller
         $customer = $request->attributes->get('customer')
             ?? Customer::findOrFail($request->session()->get('customer_id'));
         $balance = $loyalty->balance($customer->id);
-        [$tier, $nextTier, $nextAt] = match (true) {
-            $balance >= 1000 => ['Gold', null, null],
-            $balance >= 500 => ['Silver', 'Gold', 1000],
-            default => ['Member', 'Silver', 500],
-        };
+        $settings = LoyaltySetting::where('business_id', $customer->business_id)->first();
+        $loyaltyEnabled = (bool) $settings?->loyalty_enabled;
+        $membershipsEnabled = $loyaltyEnabled && (bool) $settings?->memberships_enabled;
+        $membership = $membershipsEnabled ? $loyalty->membership($customer, $balance) : ['current' => null, 'next' => null, 'grace_expires_at' => null, 'is_grace_period' => false];
 
         return [
             'customer' => $customer,
             'business' => $this->brandedBusiness(Business::findOrFail($customer->business_id)),
             'balance' => $balance,
-            'tier' => $tier,
-            'next_tier' => $nextTier,
-            'next_tier_at' => $nextAt,
+            'loyalty' => ['enabled' => $loyaltyEnabled, 'points_enabled' => $loyaltyEnabled && (bool) $settings?->points_enabled, 'memberships_enabled' => $membershipsEnabled],
+            'tier' => $membership['current']?->name,
+            'tier_details' => $membership['current'],
+            'next_tier' => $membership['next']?->name,
+            'next_tier_at' => $membership['next']?->required_points,
+            'membership_grace_expires_at' => $membership['grace_expires_at'],
+            'membership_in_grace_period' => $membership['is_grace_period'],
             'transactions' => $customer->ledger()->with('order:id,external_id,total')->latest()->limit(30)->get(),
             'orders' => $customer->orders()->latest()->limit(10)->get(),
         ];
@@ -204,67 +207,6 @@ class CustomerPortalController extends Controller
             'email' => ['nullable', 'email', 'max:150'],
         ]);
         $customer->update($data);
-
-        return $customer;
-    }
-
-    public function requestPhoneChange(Request $request)
-    {
-        /** @var Customer $customer */
-        $customer = $request->attributes->get('customer');
-        $phone = $request->validate(['phone' => ['required', 'string', 'max:30']])['phone'];
-        try {
-            $phone = PhoneNumber::normalize($phone);
-        } catch (\InvalidArgumentException $exception) {
-            abort(422, $exception->getMessage());
-        }
-        abort_if(Customer::where('business_id', $customer->business_id)->where('phone', $phone)->whereKeyNot($customer->id)->exists(), 422, 'Phone number is already in use.');
-        abort_unless($customer->email, 422, 'Add an email address to your profile before changing your mobile number.');
-        $rateKey = "customer-phone-change:{$customer->id}:{$request->ip()}";
-        abort_if(RateLimiter::tooManyAttempts($rateKey, 3), 429, 'Please wait before requesting another code.');
-        RateLimiter::hit($rateKey, 60);
-        $code = app()->environment('testing') ? '123456' : (string) random_int(100000, 999999);
-        CustomerOtp::where('business_id', $customer->business_id)
-            ->where('purpose', "profile_phone:{$customer->id}")->whereNull('consumed_at')
-            ->update(['consumed_at' => now()]);
-        CustomerOtp::create([
-            'business_id' => $customer->business_id,
-            'phone' => $phone,
-            'purpose' => "profile_phone:{$customer->id}",
-            'code_hash' => Hash::make($code),
-            'expires_at' => now()->addMinutes(2),
-        ]);
-        try {
-            Mail::to($customer->email)->queue(new VerificationCodeMail($code, 'customer_phone_change'));
-        } catch (\Throwable $exception) {
-            Log::warning('Customer phone-change email failed.', ['customer_id' => $customer->id, 'exception' => $exception::class]);
-        }
-        try {
-            app(SmsSender::class)->send($phone, "Your LoyaltyOS mobile verification code is {$code}. It expires in 2 minutes.");
-        } catch (\Throwable $exception) {
-            Log::warning('Customer phone-change SMS failed.', ['customer_id' => $customer->id, 'exception' => $exception::class]);
-        }
-
-        return ['sent' => true, 'expires_in' => 120];
-    }
-
-    public function verifyPhoneChange(Request $request)
-    {
-        /** @var Customer $customer */
-        $customer = $request->attributes->get('customer');
-        $data = $request->validate(['phone' => ['required', 'string', 'max:30'], 'code' => ['required', 'digits:6']]);
-        try {
-            $data['phone'] = PhoneNumber::normalize($data['phone']);
-        } catch (\InvalidArgumentException $exception) {
-            abort(422, $exception->getMessage());
-        }
-        $otp = CustomerOtp::where('business_id', $customer->business_id)->where('phone', $data['phone'])
-            ->where('purpose', "profile_phone:{$customer->id}")->whereNull('consumed_at')->latest()->first();
-        abort_if(! $otp || $otp->expires_at->isPast() || $otp->attempts >= 5, 422, 'Code is expired. Request a new code.');
-        $otp->increment('attempts');
-        abort_unless(Hash::check($data['code'], $otp->code_hash), 422, 'Invalid verification code.');
-        $otp->update(['consumed_at' => now()]);
-        $customer->update(['phone' => $data['phone']]);
 
         return $customer;
     }

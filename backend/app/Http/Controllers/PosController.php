@@ -6,6 +6,7 @@ use App\Jobs\ProcessPaidOrder;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PosTerminal;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -36,8 +37,9 @@ class PosController extends Controller
         ]);
         $businessId = $request->user()->business_id;
         $terminal = PosTerminal::where('business_id', $businessId)->findOrFail($data['terminal_id']);
-        $customer = empty($data['phone']) ? null : Customer::firstOrCreate(
-            ['business_id' => $businessId, 'phone' => $data['phone']],
+        $phone = empty($data['phone']) ? null : PhoneNumber::validated($data['phone']);
+        $customer = ! $phone ? null : Customer::firstOrCreate(
+            ['business_id' => $businessId, 'phone' => $phone],
             ['name' => $data['customer_name'] ?? null],
         );
         $order = Order::create([

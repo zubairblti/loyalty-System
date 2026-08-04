@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Domain;
 use App\Models\Integration;
 use App\Models\Order;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -46,7 +47,7 @@ class IntegrationController extends Controller
             'customer.phone' => ['required', 'string', 'max:30'], 'customer.name' => ['nullable', 'string', 'max:100'],
         ]);
         $customer = Customer::firstOrCreate(
-            ['business_id' => $integration->business_id, 'phone' => $data['customer']['phone']],
+            ['business_id' => $integration->business_id, 'phone' => PhoneNumber::validated($data['customer']['phone'], 'customer.phone')],
             ['name' => $data['customer']['name'] ?? null],
         );
         $order = Order::updateOrCreate(

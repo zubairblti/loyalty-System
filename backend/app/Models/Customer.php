@@ -27,4 +27,14 @@ class Customer extends Model
     {
         return $this->hasMany(Order::class);
     }
+
+    public function memberships()
+    {
+        return $this->hasMany(CustomerMembership::class);
+    }
+
+    public function currentMembership()
+    {
+        return $this->hasOne(CustomerMembership::class)->whereNull('ended_at');
+    }
 }

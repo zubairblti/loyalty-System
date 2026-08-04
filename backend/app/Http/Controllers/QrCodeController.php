@@ -6,6 +6,7 @@ use App\Jobs\ProcessPaidOrder;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\QrCode;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -42,7 +43,7 @@ class QrCodeController extends Controller
         return DB::transaction(function () use ($token, $data) {
             $qr = QrCode::where('token_hash', hash('sha256', $token))->lockForUpdate()->firstOrFail();
             abort_if(! $qr->active || $qr->claimed_at || ($qr->expires_at && $qr->expires_at->isPast()), 410, 'QR is expired or already claimed.');
-            $customer = Customer::firstOrCreate(['business_id' => $qr->business_id, 'phone' => $data['phone']], ['name' => $data['name'] ?? null]);
+            $customer = Customer::firstOrCreate(['business_id' => $qr->business_id, 'phone' => PhoneNumber::validated($data['phone'])], ['name' => $data['name'] ?? null]);
             $qr->update(['claimed_at' => now(), 'claimed_by' => $customer->id]);
             if ($qr->order_id) {
                 $order = Order::findOrFail($qr->order_id);

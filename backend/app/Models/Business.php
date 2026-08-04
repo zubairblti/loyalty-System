@@ -54,4 +54,19 @@ class Business extends Model
     {
         return $this->hasOne(User::class)->where('role', 'owner');
     }
+
+    public function loyaltySetting()
+    {
+        return $this->hasOne(LoyaltySetting::class);
+    }
+
+    public function qrCodes()
+    {
+        return $this->hasMany(QrCode::class);
+    }
+
+    public function integrations()
+    {
+        return $this->hasMany(Integration::class);
+    }
 }

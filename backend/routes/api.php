@@ -7,6 +7,7 @@ use App\Http\Controllers\BusinessProfileController;
 use App\Http\Controllers\CustomerPortalController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\IntegrationController;
+use App\Http\Controllers\LoyaltyConfigurationController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\QrCodeController;
 use App\Http\Controllers\SafepayWebhookController;
@@ -34,8 +35,6 @@ Route::prefix('/customer/{slug}')->middleware(['web', 'tenant.customer'])->group
     Route::get('/dashboard', [CustomerPortalController::class, 'dashboard'])->middleware('customer.auth');
     Route::post('/logout', [CustomerPortalController::class, 'logout'])->middleware('customer.auth');
     Route::patch('/profile', [CustomerPortalController::class, 'updateProfile'])->middleware('customer.auth');
-    Route::post('/profile/phone/otp', [CustomerPortalController::class, 'requestPhoneChange'])->middleware('customer.auth');
-    Route::post('/profile/phone/verify', [CustomerPortalController::class, 'verifyPhoneChange'])->middleware('customer.auth');
 });
 
 Route::middleware(['web', 'auth:sanctum', 'tenant.auth'])->group(function () {
@@ -57,6 +56,15 @@ Route::middleware(['web', 'auth:sanctum', 'tenant.auth'])->group(function () {
         Route::post('/business/branding', [BusinessBrandingController::class, 'update']);
         Route::delete('/business/branding', [BusinessBrandingController::class, 'reset']);
         Route::get('/business/branding/logo', [BusinessBrandingController::class, 'logo']);
+        Route::get('/business/loyalty', [LoyaltyConfigurationController::class, 'show']);
+        Route::put('/business/loyalty/settings', [LoyaltyConfigurationController::class, 'updateSettings']);
+        Route::post('/business/loyalty/rules', [LoyaltyConfigurationController::class, 'storeRule']);
+        Route::put('/business/loyalty/rules/{rule}', [LoyaltyConfigurationController::class, 'updateRule']);
+        Route::delete('/business/loyalty/rules/{rule}', [LoyaltyConfigurationController::class, 'deleteRule']);
+        Route::post('/business/loyalty/levels', [LoyaltyConfigurationController::class, 'storeLevel']);
+        Route::put('/business/loyalty/levels/{level}', [LoyaltyConfigurationController::class, 'updateLevel']);
+        Route::delete('/business/loyalty/levels/{level}', [LoyaltyConfigurationController::class, 'deleteLevel']);
+        Route::post('/business/loyalty/tours', [LoyaltyConfigurationController::class, 'completeTour']);
         Route::get('/dashboard', DashboardController::class);
         Route::get('/integrations', [IntegrationController::class, 'index']);
         Route::post('/domains', [IntegrationController::class, 'storeDomain']);

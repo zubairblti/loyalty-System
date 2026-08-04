@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Jobs\ProcessPaidOrder;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\LoyaltyPointRule;
+use App\Models\LoyaltySetting;
 use App\Models\Order;
 use App\Models\Plan;
 use App\Models\PointsLedger;
@@ -23,6 +25,8 @@ class LoyaltyFlowTest extends TestCase
         $plan = Plan::create(['name' => 'Test']);
         $business = Business::create(['plan_id' => $plan->id, 'name' => 'Cafe', 'slug' => 'cafe', 'points_per_100' => 5]);
         $this->useTenant($business->id);
+        LoyaltySetting::create(['business_id' => $business->id, 'loyalty_enabled' => true, 'points_enabled' => true]);
+        LoyaltyPointRule::create(['business_id' => $business->id, 'purchase_amount' => 100, 'earned_points' => 5]);
         $customer = Customer::create(['business_id' => $business->id, 'phone' => '03001234567']);
         $order = Order::create([
             'business_id' => $business->id, 'customer_id' => $customer->id, 'source' => 'mini_pos',
@@ -34,7 +38,7 @@ class LoyaltyFlowTest extends TestCase
 
         $this->useTenant($business->id);
 
-        $this->assertSame(62, (int) PointsLedger::where('customer_id', $customer->id)->sum('points'));
+        $this->assertSame(60, (int) PointsLedger::where('customer_id', $customer->id)->sum('points'));
         $this->assertDatabaseCount('points_ledger', 1);
     }
 

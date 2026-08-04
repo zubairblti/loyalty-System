@@ -74,11 +74,10 @@ class CustomerPortalTest extends TestCase
             ->assertJsonPath('customer.email', 'customer@example.com');
 
         $this->postJson('/api/customer/cafe/profile/phone/otp', ['phone' => '03011112222'])
-            ->assertOk()
-            ->assertJson(['sent' => true, 'expires_in' => 120]);
+            ->assertNotFound();
         $this->postJson('/api/customer/cafe/profile/phone/verify', ['phone' => '03011112222', 'code' => '123456'])
-            ->assertOk()
-            ->assertJsonPath('phone', '+923011112222');
+            ->assertNotFound();
+        $this->assertSame('+923001234567', $customer->fresh()->phone);
     }
 
     public function test_customer_dashboard_requires_customer_session(): void

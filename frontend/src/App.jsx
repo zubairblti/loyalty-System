@@ -4,15 +4,37 @@ import '@sfpy/atoms/styles'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   BarChart3, Building2, CreditCard, Globe2, LayoutDashboard, LogOut, MonitorSmartphone,
-  Activity, ArrowLeft, Bell, Plus, QrCode, ReceiptText, Search, Settings2, ShieldCheck, Trash2, UserPlus, Users, X,
+  Activity, ArrowLeft, BadgeCheck, Bell, CircleUserRound, Crown, Gem, Medal, Plus, QrCode, ReceiptText, Search, Settings2, ShieldCheck, Star, Trash2, UserPlus, Users, WalletCards, X,
 } from 'lucide-react'
 import { api, login, prepareCsrf } from './api'
 import { connectRealtime } from './realtime'
+import { formatPhone } from './phone'
 import { toast } from './toast'
 import './styles.css'
 
 const money = (value) => new Intl.NumberFormat('en-PK', { style: 'currency', currency: 'PKR', maximumFractionDigits: 0 }).format(value || 0)
 const defaultBranding = { brand_name: 'LoyaltyOS', brand_primary_color: '#1d252b', brand_accent_color: '#e4b94e', brand_text_color: '#ffffff', logo_url: null }
+const tierPresets = {
+  Silver: ['Priority Support', 'Birthday Reward', 'Early Access to Promotions'],
+  Gold: ['5% Discount', 'Free Delivery', 'Exclusive Offers'],
+  Platinum: ['10% Discount', 'Free Premium Services', 'Dedicated Customer Support', 'Exclusive Events'],
+  Diamond: ['15% Discount', 'VIP Priority Service', 'Premium Rewards', 'Anniversary Gift'],
+  VIP: ['Highest Priority Support', 'Custom Pricing', 'Exclusive Invitations', 'Premium Membership Benefits'],
+}
+const tierIcons = { Silver: Medal, Gold: Star, Platinum: Crown, Diamond: Gem, VIP: ShieldCheck }
+
+function TierIcon({ name, size = 20 }) {
+  const Icon = tierIcons[name] || BadgeCheck
+  return <Icon size={size}/>
+}
+
+function AuthLoadingScreen({ label = 'Checking your session...' }) {
+  return <main className="auth-loading-screen" aria-live="polite" aria-busy="true">
+    <div className="auth-loading-mark"><ShieldCheck size={25}/></div>
+    <div className="auth-loading-spinner"/>
+    <strong>{label}</strong>
+  </main>
+}
 const contrastText = hex => {
   const value = (hex || '#1d252b').replace('#', '')
   const [r, g, b] = [0, 2, 4].map(index => parseInt(value.slice(index, index + 2), 16))
@@ -30,6 +52,12 @@ function BrandLogo({ branding, small = false }) {
   return branding?.logo_url
     ? <img className={`brand-logo${small ? ' small' : ''}`} src={branding.logo_url} alt={`${name} logo`}/>
     : <span className={`brand-mark${small ? ' small' : ''}`}>{name.charAt(0).toUpperCase()}</span>
+}
+
+function PhoneInput({ name = 'phone', value, defaultValue, onChange, ...props }) {
+  const [phone, setPhone] = useState(formatPhone(value ?? defaultValue ?? ''))
+  useEffect(() => { if (value !== undefined) setPhone(formatPhone(value)) }, [value])
+  return <input {...props} name={name} value={phone} inputMode="numeric" maxLength="13" placeholder="(0300)1234567" onChange={event => { const formatted = formatPhone(event.target.value); setPhone(formatted); onChange?.(event) }}/>
 }
 
 function Login({ onLogin }) {
@@ -104,7 +132,7 @@ function Login({ onLogin }) {
             <label>Business name<input name="business_name" required placeholder="Acme Store"/></label>
             <label>Full name<input name="name" required placeholder="Your full name"/></label>
             <label>Email address<input name="email" type="email" required placeholder="you@business.com"/></label>
-            <label>Mobile number<input name="phone" required placeholder="+92 300 1234567"/></label>
+            <label>Mobile number<PhoneInput required/></label>
             <label>Password<input name="password" type="password" minLength="8" required placeholder="Minimum 8 characters"/></label>
             <label>Confirm password<input name="password_confirmation" type="password" minLength="8" required placeholder="Repeat password"/></label>
           </div>
@@ -294,7 +322,7 @@ function AdminPortal({ user, setUser }) {
       </div></>}
       {view === 'Businesses' && <div className="business-admin-grid">
         {showBusinessForm && <form className="panel admin-create-business" onSubmit={createBusiness}><div className="panel-head"><div><h2>Create business</h2><p>Uses the same fields as self-registration</p></div></div><div className="plan-form-grid">
-          <label>Business name<input name="business_name" required/></label><label>Full name<input name="name" required/></label><label>Email address<input name="email" type="email" required/></label><label>Mobile number<input name="phone" required placeholder="+92 300 1234567"/></label><label>Password<input name="password" type="password" minLength="8" required/></label><label>Confirm password<input name="password_confirmation" type="password" minLength="8" required/></label><button className="admin-primary plan-save">Create pending business</button>
+          <label>Business name<input name="business_name" required/></label><label>Full name<input name="name" required/></label><label>Email address<input name="email" type="email" required/></label><label>Mobile number<PhoneInput required/></label><label>Password<input name="password" type="password" minLength="8" required/></label><label>Confirm password<input name="password_confirmation" type="password" minLength="8" required/></label><button className="admin-primary plan-save">Create pending business</button>
         </div></form>}
         <section className="panel business-directory"><div className="panel-head"><div><h2>All businesses</h2><p>Self-registered and administrator-created accounts</p></div></div><div className="business-filters"><label className="search-field"><Search size={16}/><input value={businessFilters.search} onChange={e => { setBusinessFilters({ ...businessFilters, search: e.target.value }); setBusinessPage(1) }} placeholder="Search name, owner, email or phone"/></label><select value={businessFilters.status} onChange={e => { setBusinessFilters({ ...businessFilters, status: e.target.value }); setBusinessPage(1) }}><option value="">All statuses</option><option value="pending">Pending</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="rejected">Rejected</option></select><select value={businessFilters.plan} onChange={e => { setBusinessFilters({ ...businessFilters, plan: e.target.value }); setBusinessPage(1) }}><option value="">All plans</option>{data.plans.map(plan => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
           <div className="tenant-list">{directoryBusinesses.map(b => <button key={b.id} onClick={() => openBusiness(b)}><span>{b.name[0]}</span><div><strong>{b.name}</strong><small>{b.owner?.email || b.owner?.phone || 'Owner unavailable'} · {b.plan?.name || 'Subscription required'}</small></div><b>{b.status}</b></button>)}
@@ -384,7 +412,7 @@ function ClaimPage({ token }) {
       {state === 'done' ? <><h1>Points claimed</h1><p>Your loyalty account has been updated.</p></> : <>
         <h1>Claim your points</h1><p>Enter the phone number linked to your loyalty account.</p>
         <form onSubmit={submit} className="claim-form">
-          <label>Phone number<input name="phone" required placeholder="+92 300 1234567"/></label>
+          <label>Phone number<PhoneInput required/></label>
           <label>Name<input name="name" placeholder="Optional"/></label>
           {error && <div className="error">{error}</div>}
           <button className="primary">Claim points</button>
@@ -397,21 +425,29 @@ function ClaimPage({ token }) {
 function CustomerPortal({ slug }) {
   const [business, setBusiness] = useState(null)
   const [dashboard, setDashboard] = useState(null)
+  const [authChecking, setAuthChecking] = useState(true)
   const [authMode, setAuthMode] = useState('login')
   const [pendingEmail, setPendingEmail] = useState('')
   const [seconds, setSeconds] = useState(0)
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
-  const [portalView, setPortalView] = useState('rewards')
+  const [portalView, setPortalView] = useState('dashboard')
   const [profileFeedback, setProfileFeedback] = useState(null)
-  const [phoneCodeSent, setPhoneCodeSent] = useState(false)
-  const [phoneSeconds, setPhoneSeconds] = useState(0)
-  const [newPhone, setNewPhone] = useState('')
   const reloadDashboard = () => api.get(`/customer/${slug}/dashboard`).then(r => setDashboard(r.data))
 
   useEffect(() => {
-    api.get(`/customer/${slug}/business`).then(r => setBusiness(r.data)).catch(() => setError('Business portal not found.'))
-    api.get(`/customer/${slug}/dashboard`).then(r => setDashboard(r.data)).catch(() => {})
+    let active = true
+    Promise.allSettled([
+      api.get(`/customer/${slug}/business`, { showLoader: false }),
+      api.get(`/customer/${slug}/dashboard`, { showLoader: false }),
+    ]).then(([businessResult, dashboardResult]) => {
+      if (!active) return
+      if (businessResult.status === 'fulfilled') setBusiness(businessResult.value.data)
+      else setError('Business portal not found.')
+      if (dashboardResult.status === 'fulfilled') setDashboard(dashboardResult.value.data)
+      setAuthChecking(false)
+    })
+    return () => { active = false }
   }, [slug])
 
   useEffect(() => {
@@ -419,12 +455,6 @@ function CustomerPortal({ slug }) {
     const timer = window.setInterval(() => setSeconds(value => Math.max(0, value - 1)), 1000)
     return () => window.clearInterval(timer)
   }, [seconds])
-
-  useEffect(() => {
-    if (!phoneSeconds) return undefined
-    const timer = window.setInterval(() => setPhoneSeconds(value => Math.max(0, value - 1)), 1000)
-    return () => window.clearInterval(timer)
-  }, [phoneSeconds])
 
   const beginExpiry = expiresAt => setSeconds(Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000)))
   const switchAuthMode = mode => { setAuthMode(mode); setError(''); setCode('') }
@@ -466,28 +496,15 @@ function CustomerPortal({ slug }) {
     try { await api.patch(`/customer/${slug}/profile`, Object.fromEntries(new FormData(e.currentTarget))); setProfileFeedback({ type: 'success', message: 'Profile updated.' }); reloadDashboard() }
     catch (err) { setProfileFeedback({ type: 'error', message: err.response?.data?.message || 'Profile update failed.' }) }
   }
-  const requestPhoneCode = async () => {
-    setProfileFeedback(null)
-    try {
-      const { data } = await api.post(`/customer/${slug}/profile/phone/otp`, { phone: newPhone })
-      setPhoneCodeSent(true); setPhoneSeconds(data.expires_in || 120)
-      setProfileFeedback({ type: 'success', message: 'A new verification code has been sent.' })
-    } catch (err) { setProfileFeedback({ type: 'error', message: err.response?.data?.message || Object.values(err.response?.data?.errors || {})[0]?.[0] || 'Could not send code.' }) }
-  }
-  const verifyPhone = async e => {
-    e.preventDefault()
-    try { await api.post(`/customer/${slug}/profile/phone/verify`, { phone: newPhone, code: new FormData(e.currentTarget).get('code') }); setProfileFeedback({ type: 'success', message: 'Mobile number updated.' }); setPhoneCodeSent(false); setPhoneSeconds(0); reloadDashboard() }
-    catch (err) { setProfileFeedback({ type: 'error', message: err.response?.data?.message || 'Verification failed.' }) }
-  }
-
-  if (!business && !error) return <div className="loading full">Loading rewards...</div>
+  if (authChecking) return <AuthLoadingScreen label="Loading your rewards..."/>
+  if (!business && !error) return <AuthLoadingScreen label="Loading your rewards..."/>
   if (!dashboard) return <main className="customer-login" style={brandingStyle(business)}>
     <section className="customer-login-panel">
       <div className="customer-brand"><BrandLogo branding={business}/><div><small>REWARDS PORTAL</small><h1>{business?.brand_name || business?.name || 'Rewards'}</h1></div></div>
       <div className="login-copy"><h2>{authMode === 'register' ? 'Create your rewards account' : authMode === 'verify' ? 'Verify your email' : 'Welcome back'}</h2><p>{authMode === 'verify' ? `Enter the code sent to ${pendingEmail}.` : `Access your ${business?.name || ''} points and purchase history.`}</p></div>
       {authMode !== 'verify' && <div className="customer-auth-tabs"><button className={authMode === 'login' ? 'active' : ''} onClick={() => switchAuthMode('login')}>Sign in</button><button className={authMode === 'register' ? 'active' : ''} onClick={() => switchAuthMode('register')}>Register</button></div>}
       {authMode === 'login' && <form onSubmit={loginCustomer} className="claim-form">
-        <label>Mobile number<input name="phone" required placeholder="+92 300 1234567"/></label>
+        <label>Mobile number<PhoneInput required/></label>
         <label>Password<input name="password" type="password" required placeholder="Your password"/></label>
         {error && <div className="error">{error}</div>}
         <button className="customer-primary">Sign in</button>
@@ -495,7 +512,7 @@ function CustomerPortal({ slug }) {
       {authMode === 'register' && <form onSubmit={registerCustomer} className="claim-form">
         <label>Full name<input name="name" required placeholder="Your full name"/></label>
         <label>Email address<input name="email" type="email" required placeholder="you@example.com"/></label>
-        <label>Mobile number<input name="phone" required placeholder="+92 300 1234567"/></label>
+        <label>Mobile number<PhoneInput required/></label>
         <label>Password<input name="password" type="password" minLength="8" required placeholder="At least 8 characters"/></label>
         <label>Confirm password<input name="password_confirmation" type="password" minLength="8" required placeholder="Repeat your password"/></label>
         {error && <div className="error">{error}</div>}
@@ -514,37 +531,55 @@ function CustomerPortal({ slug }) {
   </main>
 
   const progress = dashboard.next_tier_at ? Math.min(100, (dashboard.balance / dashboard.next_tier_at) * 100) : 100
+  const customerItems = [
+    ['dashboard', 'Dashboard', LayoutDashboard],
+    ...(dashboard.loyalty.memberships_enabled ? [['membership', 'My Membership', BadgeCheck]] : []),
+    ...(dashboard.loyalty.points_enabled ? [['wallet', 'My Wallet', WalletCards]] : []),
+    ['transactions', 'Transactions', ReceiptText],
+    ...(dashboard.loyalty.enabled ? [['notifications', 'Notifications', Bell]] : []),
+    ['profile', 'Profile', CircleUserRound],
+  ]
+  const PointsActivity = ({ limit }) => <div className="activity-list">{dashboard.transactions.slice(0, limit).map(tx => <div className="activity-row" key={tx.id}><div className={tx.points >= 0 ? 'activity-icon earn' : 'activity-icon spend'}>{tx.points >= 0 ? '+' : '−'}</div><div><strong>{tx.description || tx.type}</strong><small>{new Date(tx.created_at).toLocaleDateString()}{tx.order ? ` · ${money(tx.order.total)} purchase` : ''}</small></div><b className={tx.points >= 0 ? 'positive' : 'negative'}>{tx.points >= 0 ? '+' : ''}{tx.points} pts</b></div>)}{!dashboard.transactions.length && <div className="customer-empty">Your points activity will appear here.</div>}</div>
+  const Purchases = ({ limit }) => <div className="activity-list">{dashboard.orders.slice(0, limit).map(order => <div className="activity-row" key={order.id}><div className="activity-icon order"><ReceiptText size={17}/></div><div><strong>{order.external_id}</strong><small>{new Date(order.created_at).toLocaleDateString()} · {order.payment_method || order.source}</small></div><b>{money(order.total)}</b></div>)}{!dashboard.orders.length && <div className="customer-empty">No linked purchases yet.</div>}</div>
   return <main className="customer-portal" style={brandingStyle(dashboard.business)}>
-    <header className="customer-header"><div className="customer-brand"><BrandLogo branding={dashboard.business} small/><strong>{dashboard.business.brand_name || dashboard.business.name}</strong></div><nav className="customer-nav"><button className={portalView === 'rewards' ? 'active' : ''} onClick={() => setPortalView('rewards')}>My rewards</button><button className={portalView === 'profile' ? 'active' : ''} onClick={() => setPortalView('profile')}>Profile</button></nav><button className="text-button" onClick={logout}>Sign out</button></header>
-    <section className="customer-content">
-      <div className="customer-welcome"><div><p>Welcome back</p><h1>{dashboard.customer.name || dashboard.customer.phone}</h1></div><span className="tier-badge">{dashboard.tier}</span></div>
-      {portalView === 'rewards' && <><section className="wallet">
+    <aside className="customer-sidebar">
+      <div className="customer-sidebar-brand"><BrandLogo branding={dashboard.business}/><div><strong>{dashboard.business.brand_name || dashboard.business.name}</strong><small>MEMBER PORTAL</small></div></div>
+      <nav>{customerItems.map(([key, name, Icon]) => <button key={key} className={portalView === key ? 'active' : ''} onClick={() => setPortalView(key)}><Icon size={18}/><span>{name}</span></button>)}</nav>
+      <div className="customer-sidebar-account"><span>{(dashboard.customer.name || dashboard.customer.phone).charAt(0).toUpperCase()}</span><div><strong>{dashboard.customer.name || 'Member'}</strong><small>{formatPhone(dashboard.customer.phone)}</small></div><button title="Sign out" onClick={logout}><LogOut size={17}/></button></div>
+    </aside>
+    <section className="customer-main">
+      <header className="customer-dashboard-header"><div><small>CUSTOMER AREA</small><h1>{customerItems.find(item => item[0] === portalView)?.[1]}</h1></div><div className="customer-header-actions">{dashboard.loyalty.memberships_enabled && dashboard.tier && <span className="tier-badge" style={{ background: dashboard.tier_details?.badge_color }}><TierIcon name={dashboard.tier} size={15}/>{dashboard.tier}</span>}<button className="customer-mobile-logout" title="Sign out" onClick={logout}><LogOut size={17}/></button></div></header>
+      <div className="customer-content">
+      {portalView === 'dashboard' && <><div className="customer-welcome"><div><p>Welcome back</p><h2>{dashboard.customer.name || dashboard.customer.phone}</h2></div></div>{dashboard.loyalty.points_enabled && <section className="wallet compact-wallet">
         <small>AVAILABLE POINTS</small><strong>{dashboard.balance.toLocaleString()}</strong><p>Use your points on your next eligible purchase.</p>
         <div className="tier-progress"><div><span>{dashboard.tier}</span><span>{dashboard.next_tier || 'Top tier'}</span></div><progress value={progress} max="100"/>
           <small>{dashboard.next_tier ? `${Math.max(0, dashboard.next_tier_at - dashboard.balance)} points to ${dashboard.next_tier}` : 'You reached the highest tier'}</small></div>
-      </section>
+      </section>}
+      {dashboard.loyalty.memberships_enabled && dashboard.tier && <section className="customer-section dashboard-membership">
+        <div className="dashboard-membership-title"><TierIcon name={dashboard.tier} size={28}/><div><small>CURRENT MEMBERSHIP</small><h2>{dashboard.tier}</h2></div></div>
+        <div className="dashboard-membership-benefits">{dashboard.membership_in_grace_period && <strong className="membership-grace">Earn {dashboard.tier_details.required_points.toLocaleString()} points by {new Date(dashboard.membership_grace_expires_at).toLocaleDateString()} to keep {dashboard.tier}.</strong>}{dashboard.tier_details?.benefits?.map(benefit => <span key={benefit}><BadgeCheck size={15}/>{benefit}</span>)}{!dashboard.tier_details?.benefits?.length && <span>No benefits configured.</span>}</div>
+      </section>}
       <div className="customer-grid">
-        <section className="customer-section"><div className="customer-section-head"><h2>Points activity</h2><span>{dashboard.transactions.length} entries</span></div>
-          <div className="activity-list">{dashboard.transactions.map(tx => <div className="activity-row" key={tx.id}><div className={tx.points >= 0 ? 'activity-icon earn' : 'activity-icon spend'}>{tx.points >= 0 ? '+' : '−'}</div><div><strong>{tx.description || tx.type}</strong><small>{new Date(tx.created_at).toLocaleDateString()}{tx.order ? ` · ${money(tx.order.total)} purchase` : ''}</small></div><b className={tx.points >= 0 ? 'positive' : 'negative'}>{tx.points >= 0 ? '+' : ''}{tx.points} pts</b></div>)}
-            {!dashboard.transactions.length && <div className="customer-empty">Your points activity will appear here.</div>}</div>
-        </section>
-        <section className="customer-section"><div className="customer-section-head"><h2>Recent purchases</h2><span>{dashboard.orders.length} orders</span></div>
-          <div className="activity-list">{dashboard.orders.map(order => <div className="activity-row" key={order.id}><div className="activity-icon order"><ReceiptText size={17}/></div><div><strong>{order.external_id}</strong><small>{new Date(order.created_at).toLocaleDateString()} · {order.payment_method || order.source}</small></div><b>{money(order.total)}</b></div>)}
-            {!dashboard.orders.length && <div className="customer-empty">No linked purchases yet.</div>}</div>
+        {dashboard.loyalty.points_enabled && <section className="customer-section"><div className="customer-section-head"><h2>Recent points</h2><button className="section-link" onClick={() => setPortalView('wallet')}>View all</button></div>
+          <PointsActivity limit={5}/>
+        </section>}
+        <section className="customer-section"><div className="customer-section-head"><h2>Recent purchases</h2><button className="section-link" onClick={() => setPortalView('transactions')}>View all</button></div>
+          <Purchases limit={5}/>
         </section>
       </div></>}
+      {portalView === 'membership' && <div className="membership-view"><section className="membership-card"><small>CURRENT MEMBERSHIP</small><TierIcon name={dashboard.tier} size={38}/><strong>{dashboard.tier || 'No level yet'}</strong><p>{dashboard.next_tier ? `${Math.max(0, dashboard.next_tier_at - dashboard.balance)} more points to reach ${dashboard.next_tier}.` : dashboard.tier ? 'You have reached the highest membership tier.' : 'Keep earning points to unlock your first membership level.'}</p></section><div className="customer-page-stack"><section className="customer-section membership-progress"><div className="customer-section-head"><h2>Tier progress</h2><span>{Math.round(progress)}%</span></div><div><div><strong>{dashboard.balance.toLocaleString()} points</strong><span>{dashboard.next_tier_at ? `${dashboard.next_tier_at.toLocaleString()} required` : 'Highest tier'}</span></div><progress value={progress} max="100"/></div></section><section className="customer-section"><div className="customer-section-head"><h2>Membership benefits</h2><span>{dashboard.tier_details?.benefits?.length || 0} benefits</span></div><div className="membership-benefits">{dashboard.tier_details?.benefits?.map(benefit => <p key={benefit}><BadgeCheck size={16}/>{benefit}</p>)}{!dashboard.tier_details?.benefits?.length && <div className="customer-empty">No benefits are configured for your current level.</div>}</div></section></div></div>}
+      {portalView === 'wallet' && <div className="customer-page-stack"><section className="wallet wallet-summary"><small>POINTS BALANCE</small><strong>{dashboard.balance.toLocaleString()}</strong><p>Available rewards balance</p></section><section className="customer-section"><div className="customer-section-head"><h2>Wallet activity</h2><span>{dashboard.transactions.length} entries</span></div><PointsActivity limit={dashboard.transactions.length}/></section></div>}
+      {portalView === 'transactions' && <section className="customer-section"><div className="customer-section-head"><h2>Purchase transactions</h2><span>{dashboard.orders.length} orders</span></div><Purchases limit={dashboard.orders.length}/></section>}
+      {portalView === 'notifications' && <section className="customer-section"><div className="customer-section-head"><h2>Reward notifications</h2><span>{dashboard.transactions.length} updates</span></div><div className="customer-notifications">{dashboard.transactions.map(tx => <article key={tx.id}><span><Bell size={16}/></span><div><strong>{tx.points >= 0 ? `${tx.points} points added` : `${Math.abs(tx.points)} points used`}</strong><p>{tx.description || 'Your rewards balance was updated.'}</p><small>{new Date(tx.created_at).toLocaleString()}</small></div></article>)}{!dashboard.transactions.length && <div className="customer-empty">You have no notifications yet.</div>}</div></section>}
       {portalView === 'profile' && <div className="profile-grid">
         <form className="customer-section profile-form" onSubmit={updateProfile}>
           <div className="customer-section-head"><h2>Personal details</h2><span>Customer #{dashboard.customer.id}</span></div>
-          <div className="profile-fields"><label>Full name<input name="name" required defaultValue={dashboard.customer.name || ''}/></label><label>Email address<input name="email" type="email" defaultValue={dashboard.customer.email || ''} placeholder="you@example.com"/></label><label>Current mobile<input value={dashboard.customer.phone} disabled/></label>
+          <div className="profile-fields"><label>Full name<input name="name" required defaultValue={dashboard.customer.name || ''}/></label><label>Email address<input name="email" type="email" defaultValue={dashboard.customer.email || ''} placeholder="you@example.com"/></label><label>Registered mobile<input value={formatPhone(dashboard.customer.phone)} readOnly/></label>
             <button className="customer-primary">Save profile</button></div>
         </form>
-        <section className="customer-section phone-change"><div className="customer-section-head"><h2>Change mobile number</h2></div>
-          <div className="profile-fields"><label>New mobile number<input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="+92 300 1234567"/></label>
-            {!phoneCodeSent ? <button className="customer-primary" onClick={requestPhoneCode}>Send verification code</button> : <form onSubmit={verifyPhone} className="claim-form"><label>Verification code<input name="code" inputMode="numeric" maxLength="6" required/></label><small className="code-expiry">{phoneSeconds ? `Code expires in ${Math.floor(phoneSeconds / 60)}:${String(phoneSeconds % 60).padStart(2, '0')}` : 'Code expired. Request a new one.'}</small><button className="customer-primary" disabled={!phoneSeconds}>Verify number</button><button type="button" className="text-button" onClick={requestPhoneCode} disabled={phoneSeconds > 90}>Resend code{phoneSeconds > 90 ? ` in ${phoneSeconds - 90}s` : ''}</button></form>}
-            {profileFeedback && <div className={`${profileFeedback.type === 'error' ? 'error' : 'notice'} auth-notice`}>{profileFeedback.message}</div>}</div>
-        </section>
+        <section className="customer-section profile-phone"><div className="customer-section-head"><h2>Registered mobile</h2></div><div className="profile-fields"><p>Your account is secured against mobile number changes.</p><strong>{formatPhone(dashboard.customer.phone)}</strong>{profileFeedback && <div className={`${profileFeedback.type === 'error' ? 'error' : 'notice'} auth-notice`}>{profileFeedback.message}</div>}</div></section>
       </div>}
+      </div>
     </section>
   </main>
 }
@@ -771,6 +806,65 @@ function BrandingSettings({ branding, onSaved }) {
   </div>
 }
 
+function LoyaltyManagement() {
+  const [data, setData] = useState(null)
+  const [tab, setTab] = useState('setup')
+  const [tour, setTour] = useState(null)
+  const [editingRule, setEditingRule] = useState(null)
+  const [editingLevel, setEditingLevel] = useState(null)
+  const [levelName, setLevelName] = useState('Silver')
+  const [benefits, setBenefits] = useState(tierPresets.Silver)
+  const load = () => api.get('/business/loyalty').then(response => setData(response.data))
+  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (!data) return
+    const key = tab === 'levels' ? 'membership' : tab === 'rewards' ? 'rewards' : 'loyalty'
+    if (!data.settings.completed_tours?.includes(key)) setTour(key)
+  }, [data, tab])
+  useEffect(() => {
+    if (!editingLevel) return
+    setLevelName(editingLevel.name)
+    setBenefits(editingLevel.benefits?.length ? editingLevel.benefits : tierPresets[editingLevel.name])
+  }, [editingLevel])
+  useEffect(() => {
+    const nameInput = document.querySelector('.loyalty-form input[name="name"]')
+    const orderInput = document.querySelector('.loyalty-form input[name="display_order"]')
+    if (nameInput) nameInput.value = levelName
+    if (orderInput) orderInput.value = Object.keys(tierPresets).indexOf(levelName) + 1
+  }, [levelName, editingLevel, tab])
+  if (!data) return <div className="loading">Loading loyalty program...</div>
+  const saveSettings = async next => { await api.put('/business/loyalty/settings', next); await load() }
+  const createRule = async event => { event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); values.active = values.active === '1'; if (editingRule) await api.put(`/business/loyalty/rules/${editingRule.id}`, values); else await api.post('/business/loyalty/rules', values); setEditingRule(null); form.reset(); await load() }
+  const createLevel = async event => {
+    event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); values.name = levelName; values.benefits = benefits.map(value => value.trim()).filter(Boolean); values.active = values.active === '1'
+    if (editingLevel) await api.put(`/business/loyalty/levels/${editingLevel.id}`, values); else await api.post('/business/loyalty/levels', values); setEditingLevel(null); setLevelName('Silver'); setBenefits(tierPresets.Silver); form.reset(); await load()
+  }
+  const steps = [['profile', 'Complete business profile'], ['loyalty', 'Enable loyalty program'], ['points_rule', 'Configure points rules'], ['membership_level', 'Create membership levels'], ['qr', 'Configure QR'], ['integration', 'Connect a website']]
+  const editLevel = level => { setEditingLevel(level); setLevelName(level.name); setBenefits(level.benefits?.length ? level.benefits : tierPresets[level.name]) }
+  const selectLevel = name => { setLevelName(name); setBenefits(tierPresets[name]) }
+  const locked = tab === 'rules' ? !data.settings.points_enabled : ['levels', 'rewards'].includes(tab) ? !data.settings.memberships_enabled : false
+  const examples = Object.values(tierPresets).flat()
+  const tourCopy = {
+    loyalty: ['Configure your loyalty program', 'Enable the program first, then choose whether customers earn points and use membership levels. Points rules only affect future paid orders.'],
+    membership: ['Build membership levels', 'Add levels in ascending display order with unique point thresholds, badge styling and customer-facing benefits.'],
+    rewards: ['Review customer benefits', 'This view shows the rewards customers receive at each active membership level.'],
+  }
+  const closeTour = async () => { const active = tour; setTour(null); if (active && !data.settings.completed_tours?.includes(active)) { await api.post('/business/loyalty/tours', { tour: active }, { showLoader: false }); await load() } }
+  return <div className={`loyalty-workspace${locked ? ' is-locked' : ''}${tab === 'levels' ? ' levels-layout' : ''}`}>
+    <div className="loyalty-navigation"><section className="loyalty-tabs">{[['setup', 'Overview'], ['rules', 'Points Rules'], ['levels', 'Membership Levels'], ['rewards', 'Rewards & Benefits']].map(([key, label]) => <button className={tab === key ? 'active' : ''} key={key} onClick={() => setTab(key)}>{label}</button>)}</section><button className="secondary" onClick={() => setTour(tab === 'levels' ? 'membership' : tab === 'rewards' ? 'rewards' : 'loyalty')}>Help</button></div>
+    {locked && <section className="feature-locked"><ShieldCheck size={30}/><h2>{tab === 'rules' ? 'Customer Points is disabled' : 'Membership Levels is disabled'}</h2><p>Enable this feature from Overview before configuring it.</p><button className="primary" onClick={() => setTab('setup')}>Open general settings</button></section>}
+    {tab === 'levels' && !locked && <section className="panel tier-preset-editor"><div className="panel-head"><div><h2>Membership setup</h2><p>Choose a fixed membership type and customize its benefits</p></div></div><div className="tier-preset-body"><div className="tier-type-field"><strong>Membership type</strong><div className="tier-type-options">{Object.keys(tierPresets).map(name => { const Icon = tierIcons[name]; return <button type="button" key={name} className={levelName === name ? 'active' : ''} disabled={Boolean(editingLevel)} onClick={() => selectLevel(name)}><Icon size={19}/><span>{name}</span></button> })}</div><small>The icon and display order are assigned automatically.</small></div><div className="benefit-editor"><strong>Included benefits</strong>{benefits.map((benefit, index) => <div key={index}><input value={benefit} onChange={event => setBenefits(values => values.map((value, itemIndex) => itemIndex === index ? event.target.value : value))}/><button type="button" title="Remove benefit" onClick={() => setBenefits(values => values.filter((_, itemIndex) => itemIndex !== index))}><X size={15}/></button></div>)}<button type="button" className="secondary" onClick={() => setBenefits(values => [...values, ''])}><Plus size={15}/>Add benefit</button></div></div></section>}
+    {tab === 'setup' && <div className="loyalty-columns"><section className="panel"><div className="panel-head"><div><h2>General settings</h2><p>Control which loyalty features customers can use</p></div></div><div className="toggle-list">
+      {[['loyalty_enabled', 'Enable loyalty program'], ['points_enabled', 'Enable customer points'], ['memberships_enabled', 'Enable membership levels']].map(([key, label]) => <label key={key}><span><strong>{label}</strong><small>{key === 'loyalty_enabled' ? 'Master control for all rewards features' : `Show and calculate ${label.toLowerCase()}`}</small></span><input type="checkbox" checked={data.settings[key]} disabled={key !== 'loyalty_enabled' && !data.settings.loyalty_enabled} onChange={event => saveSettings({ ...data.settings, [key]: event.target.checked })}/></label>)}
+      <label className="downgrade-policy"><span><strong>Tier downgrade policy</strong><small>Time allowed to recover required points after redemption</small></span><select value={data.settings.membership_downgrade_grace_days ?? ''} disabled={!data.settings.loyalty_enabled || !data.settings.memberships_enabled} onChange={event => saveSettings({ ...data.settings, membership_downgrade_grace_days: event.target.value ? Number(event.target.value) : null })}><option value="">Never downgrade</option><option value="15">15 days</option><option value="30">30 days</option><option value="60">60 days</option></select></label>
+    </div></section><section className="panel"><div className="panel-head"><div><h2>Setup progress</h2><p>Initial workspace checklist</p></div></div><div className="onboarding-list">{steps.map(([key, label]) => <div key={key} className={data.onboarding[key] ? 'complete' : ''}><BadgeCheck size={18}/><span>{label}</span><strong>{data.onboarding[key] ? 'Complete' : 'Pending'}</strong></div>)}</div></section></div>}
+    {tab === 'rules' && <div className="loyalty-columns"><section className="panel"><div className="panel-head"><div><h2>Points rules</h2><p>Highest eligible purchase threshold applies to each new order</p></div></div><div className="loyalty-list">{data.rules.map(rule => <div key={rule.id}><div><strong>{money(rule.purchase_amount)} = {rule.earned_points} points</strong><small>{rule.active ? 'Active' : 'Inactive'} · Existing ledger entries never change</small></div><button title="Edit rule" onClick={() => setEditingRule(rule)}><Settings2 size={16}/></button><button title="Delete rule" onClick={async () => { await api.delete(`/business/loyalty/rules/${rule.id}`); load() }}><Trash2 size={16}/></button></div>)}{!data.rules.length && <div className="customer-empty">No points rule configured.</div>}</div></section><form key={editingRule?.id || 'new-rule'} className="panel loyalty-form" onSubmit={createRule}><div className="panel-head"><div><h2>{editingRule ? 'Edit points rule' : 'Add points rule'}</h2><p>Duplicate purchase amounts are not allowed</p></div>{editingRule && <button type="button" className="text-button" onClick={() => setEditingRule(null)}>Cancel</button>}</div><div><label>Purchase amount (PKR)<input name="purchase_amount" type="number" min="1" step="0.01" required defaultValue={editingRule?.purchase_amount}/></label><label>Earned points<input name="earned_points" type="number" min="1" required defaultValue={editingRule?.earned_points}/></label><label className="check-label"><input name="active" type="checkbox" value="1" defaultChecked={editingRule?.active ?? true}/>Active</label><button className="primary">{editingRule ? 'Save rule' : 'Add rule'}</button></div></form></div>}
+    {tab === 'levels' && <div className="loyalty-columns"><section className="panel"><div className="panel-head"><div><h2>Membership levels</h2><p>Thresholds must increase with display order</p></div></div><div className="loyalty-list">{data.levels.map(level => <div key={level.id}><span className="level-icon" style={{ color: level.badge_color }}><TierIcon name={level.name}/></span><div><strong>{level.name} · {level.required_points.toLocaleString()} points</strong><small>Order {level.display_order} · {level.active ? 'Active' : 'Inactive'} · {level.benefits?.length || 0} benefits</small></div><button title="Edit level" onClick={() => setEditingLevel(level)}><Settings2 size={16}/></button><button title="Delete level" onClick={async () => { await api.delete(`/business/loyalty/levels/${level.id}`); load() }}><Trash2 size={16}/></button></div>)}{!data.levels.length && <div className="customer-empty">No membership levels configured.</div>}</div></section><form key={editingLevel?.id || 'new-level'} className="panel loyalty-form" onSubmit={createLevel}><div className="panel-head"><div><h2>{editingLevel ? 'Edit membership level' : 'Create membership level'}</h2><p>Customers resolve to the highest active eligible level</p></div>{editingLevel && <button type="button" className="text-button" onClick={() => setEditingLevel(null)}>Cancel</button>}</div><div><label>Level name<input name="name" required placeholder="Gold" defaultValue={editingLevel?.name}/></label><label>Required points<input name="required_points" type="number" min="0" required defaultValue={editingLevel?.required_points}/></label><label>Display order<input name="display_order" type="number" min="1" required defaultValue={editingLevel?.display_order}/></label><label>Badge color<input name="badge_color" type="color" defaultValue={editingLevel?.badge_color || '#e4b94e'}/></label><label>Badge icon<select name="icon" defaultValue={editingLevel?.icon || 'badge'}><option value="badge">Badge</option><option value="star">Star</option><option value="crown">Crown</option><option value="diamond">Diamond</option></select></label><label>Benefits, one per line<textarea name="benefits" rows="5" defaultValue={editingLevel?.benefits?.join('\n')} placeholder={examples.join('\n')}/></label><label className="check-label"><input name="active" type="checkbox" value="1" defaultChecked={editingLevel?.active ?? true}/>Active</label><button className="primary">{editingLevel ? 'Save level' : 'Create level'}</button></div></form></div>}
+    {tab === 'rewards' && <section className="panel"><div className="panel-head"><div><h2>Rewards & benefits</h2><p>Benefits configured on active membership levels</p></div></div><div className="benefit-levels">{data.levels.filter(level => level.active).map(level => <article key={level.id}><div className="benefit-level-title" style={{ color: level.badge_color }}><TierIcon name={level.name} size={22}/><h3>{level.name}</h3></div>{level.benefits?.map(benefit => <p key={benefit}><BadgeCheck size={14}/>{benefit}</p>)}{!level.benefits?.length && <small>No benefits configured.</small>}</article>)}{!data.levels.some(level => level.active) && <div className="customer-empty">Create an active membership level to configure benefits.</div>}</div></section>}
+    {tour && <div className="tour-overlay" role="dialog" aria-modal="true"><section><button className="tour-close" title="Close tour" onClick={closeTour}><X size={18}/></button><span><BadgeCheck size={23}/></span><small>QUICK TOUR</small><h2>{tourCopy[tour][0]}</h2><p>{tourCopy[tour][1]}</p><button className="primary" onClick={closeTour}>Got it</button></section></div>}
+  </div>
+}
+
 function Shell({ user, onLogout }) {
   const [view, setView] = useState('Overview')
   const [revision, setRevision] = useState(0)
@@ -792,7 +886,7 @@ function Shell({ user, onLogout }) {
   if (subscription.profile_required || !subscription.business?.profile_completed) return <BusinessProfileGate user={user} onComplete={loadSubscription} onLogout={onLogout}/>
   const items = [
     ['Overview', LayoutDashboard], ['POS', ReceiptText], ['QR codes', QrCode],
-    ['Integrations', Globe2], ['Customers', Users], ['Analytics', BarChart3], ['Settings', Settings2],
+    ['Integrations', Globe2], ['Customer Loyalty', BadgeCheck], ['Customers', Users], ['Analytics', BarChart3], ['Settings', Settings2],
   ]
   return <div className="app-shell" style={brandingStyle(branding)}>
     <aside>
@@ -808,6 +902,7 @@ function Shell({ user, onLogout }) {
       {view === 'POS' && <Pos />}
       {view === 'QR codes' && <QRCodes />}
       {view === 'Integrations' && <Integrations plan={subscription.subscription.plan} />}
+      {view === 'Customer Loyalty' && <LoyaltyManagement />}
       {['Customers', 'Analytics'].includes(view) && <Empty title={view} />}
       {view === 'Settings' && <BrandingSettings branding={branding} onSaved={data => setBranding({ ...data, loaded: true })} />}
     </main>
@@ -848,7 +943,7 @@ function Pos() {
     {terminals.length ? <form onSubmit={submit} className="form-grid">
       <label>Terminal<select name="terminal_id">{terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
       <label>Total (PKR)<input name="total" type="number" min="1" required placeholder="2,500" /></label>
-      <label>Customer phone<input name="phone" required placeholder="+92 300 1234567" /></label>
+      <label>Customer phone<PhoneInput required /></label>
       <label>Customer name<input name="customer_name" placeholder="Optional" /></label>
       <label>Payment<select name="payment_method"><option value="cash">Cash</option><option value="card">Card</option><option value="jazzcash">JazzCash</option><option value="easypaisa">EasyPaisa</option></select></label>
       <button className="primary wide">Complete sale</button>
@@ -896,10 +991,13 @@ export default function App() {
   const customerSlug = window.location.pathname.match(/^\/customer\/([^/]+)\/?$/)?.[1]
   const isAdmin = /^\/admin\/?$/.test(window.location.pathname)
   const [user, setUser] = useState(undefined)
-  useEffect(() => { api.get('/me').then(r => setUser(r.data)).catch(() => setUser(null)) }, [])
+  useEffect(() => {
+    if (claimToken || customerSlug) return
+    api.get('/me', { showLoader: false }).then(r => setUser(r.data)).catch(() => setUser(null))
+  }, [claimToken, customerSlug])
   if (claimToken) return <ClaimPage token={claimToken}/>
   if (customerSlug) return <CustomerPortal slug={customerSlug}/>
-  if (user === undefined) return <div className="loading full">Loading...</div>
+  if (user === undefined) return <AuthLoadingScreen label={isAdmin ? 'Loading control center...' : 'Loading your workspace...'}/>
   if (isAdmin) return <AdminPortal user={user} setUser={setUser}/>
   if (!user) return <Login onLogin={setUser} />
   if (user.role === 'super_admin') {

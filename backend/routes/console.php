@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 Schedule::command('subscriptions:process-expirations')->dailyAt('09:00')->withoutOverlapping();
 Schedule::command('payments:expire-stale-sessions')->hourly()->withoutOverlapping();
+Schedule::command('memberships:process-downgrades')->dailyAt('01:00')->withoutOverlapping();
